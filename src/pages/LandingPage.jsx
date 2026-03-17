@@ -13,19 +13,19 @@ import infirmaryBg from '../assets/infirmary bg.jpg';
 const news = [
   {
     title: "First Aid & Health Checks",
-    description: "The School University is here for bumps, fevers, and minor injuries. Students and staff can book a visit anytime.",
-    // image: "https://images.unsplash.com/photo-1584515933487-779824d29309?auto=format&fit=crop&q=80&w=1000"
+    description: "The University Infirmary is here for bumps, fevers, and minor injuries. Students and staff can book a visit anytime.",
     image: infirmaryBg
   },
   {
     title: "Flu Shots for Students & Staff",
     description: "Annual flu vaccinations are available. Book a slot for your child or yourself and stay healthy this term.",
-    image: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1000"
+    image: "https://images.unsplash.com/photo-1584515933487-779824d29309?auto=format&fit=crop&q=80&w=1000"
   },
   {
     title: "Wellness at School",
     description: "From minor aches to health advice, our school nurse and team are here to support every student and staff member.",
-    image: "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=1000"
+    // image: "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=1000"
+    image: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1000"
   }
 ];
 
@@ -87,7 +87,7 @@ export const LandingPage = () => {
                 <div className="max-w-2xl space-y-4 sm:space-y-8">
                   <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-primary/20 backdrop-blur-md border border-primary/30 text-white text-[10px] font-black rounded-full uppercase tracking-[0.15em] sm:tracking-[0.2em]">
                     <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primary rounded-full animate-pulse" />
-                    School University Updates
+                    University Infirmary Updates
                   </div>
                   <h1 className="text-3xl sm:text-5xl md:text-8xl font-black text-white leading-[1.1] tracking-tighter">
                     {item.title}
@@ -128,7 +128,7 @@ export const LandingPage = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="text-center space-y-4 sm:space-y-6 mb-12 sm:mb-24">
               <div className="inline-block px-4 py-1.5 bg-primary/10 text-primary text-xs font-black rounded-full uppercase tracking-widest">What We Offer</div>
-              <h2 className="text-3xl sm:text-4xl md:text-6xl font-black text-slate-900 tracking-tight px-1">School University Services</h2>
+              <h2 className="text-3xl sm:text-4xl md:text-6xl font-black text-slate-900 tracking-tight px-1">University Infirmary Services</h2>
               <p className="text-slate-500 max-w-2xl mx-auto text-base sm:text-xl leading-relaxed">Care and support for students and staff — first aid, health checks, and a safe place when you need it.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-10">
@@ -170,7 +170,7 @@ export const LandingPage = () => {
                 </div>
                 <div className="space-y-6 sm:space-y-8">
                   {[
-                    { step: "01", title: "Sign Up", desc: "Register as a student or staff member to use the School University booking system." },
+                    { step: "01", title: "Sign Up", desc: "Register as a student or staff member to use the University Infirmary booking system." },
                     { step: "02", title: "Choose Reason", desc: "Select whether you need first aid, a health check, medication support, or rest." },
                     { step: "03", title: "Pick a Time", desc: "Choose a date and time that works for you during school hours." },
                     { step: "04", title: "Come to the Infirmary", desc: "Show up at your scheduled time — we’ll be ready for you." }
@@ -214,18 +214,18 @@ export const LandingPage = () => {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-10 pb-10 border-b border-white/5">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white/10 shadow-xl shrink-0 flex items-center justify-center">
-                <img src={logoImg} alt="School University" className="w-full h-full object-contain" />
+                <img src={logoImg} alt="University Infirmary" className="w-full h-full object-contain" />
               </div>
               <div>
                 <span className="font-black text-2xl tracking-tighter block">Infirmary Connect</span>
-                <span className="text-primary font-bold text-xs uppercase tracking-[0.2em]">School University</span>
+                <span className="text-primary font-bold text-xs uppercase tracking-[0.2em]">University Infirmary</span>
               </div>
             </div>
             <p className="text-slate-400 max-w-md text-base leading-relaxed">
               First aid, health checks, and a safe place to rest for students and staff.
             </p>
           </div>
-          <p className="pt-8 text-slate-500 text-sm">© 2026 School University Booking.</p>
+          <p className="pt-8 text-slate-500 text-sm">© 2026 University Infirmary Booking.</p>
         </div>
       </footer>
     </div>

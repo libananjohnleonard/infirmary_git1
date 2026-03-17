@@ -279,27 +279,43 @@ export const BookingForm = ({ onBook, appointments, user }) => {
               <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
                 <Clock size={16} className="text-primary" />
                 Availability for {safeFormat(date, 'MMMM d, yyyy')}
-                {slotsLoading && <span className="text-xs font-normal text-slate-400">(loading…)</span>}
               </h3>
               <div className="grid grid-cols-1 gap-4">
-                {slotAvailability.map((slot) => (
-                  <button
-                    key={slot.time}
-                    type="button"
-                    disabled={slot.remaining <= 0}
-                    onClick={() => setFormData({ ...formData, timeSlot: slot.time })}
-                    className={`p-4 rounded-2xl border transition-all flex justify-between items-center ${
-                      formData.timeSlot === slot.time
-                        ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
-                        : 'border-slate-200 bg-white hover:border-primary/50 text-slate-600'
-                    } ${slot.remaining <= 0 ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
-                  >
-                    <span className="font-bold">{slot.time}</span>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${slot.remaining > 10 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                      {slot.remaining} slots left
-                    </span>
-                  </button>
-                ))}
+                {slotsLoading ? (
+                  // Skeleton loader while fetching available slots
+                  Array.from({ length: 3 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-2xl border border-slate-200 bg-slate-50 animate-pulse flex justify-between items-center"
+                    >
+                      <div className="h-4 w-32 bg-slate-200 rounded-full" />
+                      <div className="h-6 w-24 bg-slate-200 rounded-full" />
+                    </div>
+                  ))
+                ) : (
+                  slotAvailability.map((slot) => (
+                    <button
+                      key={slot.time}
+                      type="button"
+                      disabled={slot.remaining <= 0}
+                      onClick={() => setFormData({ ...formData, timeSlot: slot.time })}
+                      className={`p-4 rounded-2xl border transition-all flex justify-between items-center ${
+                        formData.timeSlot === slot.time
+                          ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
+                          : 'border-slate-200 bg-white hover:border-primary/50 text-slate-600'
+                      } ${slot.remaining <= 0 ? 'opacity-50 cursor-not-allowed bg-slate-100' : ''}`}
+                    >
+                      <span className="font-bold">{slot.time}</span>
+                      <span
+                        className={`text-xs font-bold px-3 py-1 rounded-full ${
+                          slot.remaining > 10 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                        }`}
+                      >
+                        {slot.remaining} slots left
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
               {getDay(date) === 0 || getDay(date) >= 5 ? (
                 <div className="mt-4 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-xl border border-amber-100">

@@ -172,14 +172,14 @@ export const ClientDashboardLayout = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            <div className="hidden md:flex items-center bg-slate-50 border border-slate-200 rounded-full px-4 py-1.5 gap-2">
+            {/* <div className="hidden md:flex items-center bg-slate-50 border border-slate-200 rounded-full px-4 py-1.5 gap-2">
               <Search size={16} className="text-slate-400" />
               <input
                 type="text"
                 placeholder="Search..."
                 className="bg-transparent border-none focus:outline-none text-sm w-40"
               />
-            </div>
+            </div> */}
 
             <div className="relative" ref={notificationRef}>
               <button

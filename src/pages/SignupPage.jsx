@@ -74,7 +74,7 @@ export const SignupPage = () => {
             <UserPlus className="w-7 h-7 sm:w-8 sm:h-8" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tighter">Create Account</h2>
-          <p className="text-slate-500 font-medium text-sm sm:text-base">Join the School University</p>
+          <p className="text-slate-500 font-medium text-sm sm:text-base">Join the University Infirmary</p>
         </div>
 
         {!userType ? (
