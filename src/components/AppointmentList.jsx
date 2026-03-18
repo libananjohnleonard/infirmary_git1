@@ -73,13 +73,15 @@ const AppointmentDetailModal = ({ isOpen, appointment, onClose }) => {
             </button>
 
             <div className="bg-slate-50 p-4 sm:p-8 border-b border-slate-100">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                  <ServiceIcon service={appointment.service} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-800">Appointment Details</h2>
-                  <StatusBadge status={appointment.status} />
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
+                    <ServiceIcon service={appointment.service} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-800">Appointment Details</h2>
+                    <StatusBadge status={appointment.status} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -95,6 +97,16 @@ const AppointmentDetailModal = ({ isOpen, appointment, onClose }) => {
                     <p className="text-2xl font-black text-slate-800 tracking-tight">{appointment.appointmentCode}</p>
                   </div>
                 </div>
+                {appointment.queueNumber && (
+                  <div className="ml-4 text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Queue Number
+                    </p>
+                    <p className="text-lg font-black text-slate-900">
+                      {appointment.queueNumber}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-6">
@@ -211,19 +223,26 @@ export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClie
             onClick={() => setSelectedApt(apt)}
             className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100 hover:shadow-md transition-all relative group cursor-pointer hover:border-primary/20 min-w-0"
           >
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 rounded-xl bg-slate-50">
-                <ServiceIcon service={apt.service} />
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-3 rounded-xl bg-slate-50">
+                  <ServiceIcon service={apt.service} />
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <StatusBadge status={apt.status} />
+                  <div className="flex items-center gap-1.5">
+                    {apt.appointmentCode && (
+                      <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                        {apt.appointmentCode}
+                      </span>
+                    )}
+                    {isClient && apt.queueNumber && (
+                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5">
+                        Queue: {apt.queueNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col items-end gap-2">
-                <StatusBadge status={apt.status} />
-                {apt.appointmentCode && (
-                  <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                    {apt.appointmentCode}
-                  </span>
-                )}
-              </div>
-            </div>
 
             <h3 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
               <User size={18} className="text-slate-400" />

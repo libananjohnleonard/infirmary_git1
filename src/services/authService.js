@@ -21,5 +21,9 @@ export const authService = {
     });
     return data;
   },
+  kioskCheckIn: async (payload) => {
+    const { data } = await api.post('/api/kiosk/check-in', payload);
+    return data;
+  },
 };
 

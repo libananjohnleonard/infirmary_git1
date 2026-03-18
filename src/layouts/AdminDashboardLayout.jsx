@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarDays, ClipboardList, FolderOpen, LogOut, ScrollText, UserPlus, Menu, X } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, ClipboardList, FolderOpen, LogOut, ScrollText, UserPlus, Menu, X, ListOrdered } from 'lucide-react';
 import logoImg from '../assets/logo.jpg';
 import toast from 'react-hot-toast';
 import { useApp } from '../context/AppContext';
@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 const navItemsBase = [
   { to: '/admin', end: true, label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/appointments', end: false, label: 'Appointments', icon: CalendarDays },
+  { to: '/admin/queues', end: false, label: 'Queues', icon: ListOrdered },
   { to: '/admin/consultation', end: false, label: 'Consultation Logs', icon: ClipboardList },
   { to: '/admin/records', end: false, label: 'Medical Records', icon: FolderOpen },
 ];

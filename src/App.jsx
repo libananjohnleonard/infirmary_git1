@@ -20,6 +20,7 @@ import { AdminConsultationPage } from './pages/admin/AdminConsultationPage';
 import { AdminRecordsPage } from './pages/admin/AdminRecordsPage';
 import { AdminSystemLogsPage } from './pages/admin/AdminSystemLogsPage';
 import { AdminCreateAdminPage } from './pages/admin/AdminCreateAdminPage';
+import { AdminQueuePage } from './pages/admin/AdminQueuePage';
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboardLayout />}>
           <Route index element={<AdminOverviewPage />} />
           <Route path="appointments" element={<AdminAppointmentsPage />} />
+          <Route path="queues" element={<AdminQueuePage />} />
           <Route path="consultation" element={<AdminConsultationPage />} />
           <Route path="records" element={<AdminRecordsPage />} />
           <Route path="create-admin" element={<AdminCreateAdminPage />} />

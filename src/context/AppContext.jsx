@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { appointmentService } from '../services/appointmentService';
 import { notificationService } from '../services/notificationService';
 import { consultationService } from '../services/consultationService';
+import { queueService } from '../services/queueService';
 
 const AppContext = createContext(null);
 
@@ -123,8 +124,27 @@ export const AppProvider = ({ children }) => {
       return;
     }
     try {
-      const data = await appointmentService.getMyAppointments();
-      setAppointments(data);
+      const [data, myQueues] = await Promise.all([
+        appointmentService.getMyAppointments(),
+        queueService.myToday().catch(() => []),
+      ]);
+      const queuesByApt = new Map();
+      (myQueues || []).forEach((q) => {
+        if (q.appointmentId) {
+          queuesByApt.set(q.appointmentId, q);
+        }
+      });
+      const enriched = (data || []).map((apt) => {
+        const q = queuesByApt.get(apt.id);
+        return q
+          ? {
+              ...apt,
+              queueNumber: q.queueNumber,
+              queueStatus: q.status,
+            }
+          : apt;
+      });
+      setAppointments(enriched);
     } catch {
       setAppointments([]);
     } finally {
