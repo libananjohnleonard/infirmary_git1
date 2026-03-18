@@ -13,7 +13,6 @@ import {
   X,
   UserCircle2,
   ChevronRight,
-  File,
   Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -27,8 +26,6 @@ const toastStyle = {
   fontWeight: 'bold',
   fontSize: '12px',
 };
-
-const isImageType = (type) => type && type.startsWith('image/');
 
 function formatRecordDate(recordedAt) {
   if (!recordedAt) return '—';
@@ -100,6 +97,18 @@ export const AdminRecordsPage = () => {
 
   const userRecords = apiRecords;
   const isViewingRecord = selectedRecordTile && !isAddingRecord;
+  const selectedRecordAttachments =
+    selectedRecordTile?.attachments?.length > 0
+      ? selectedRecordTile.attachments
+      : selectedRecordTile?.attachmentPath
+        ? [
+            {
+              id: null,
+              attachmentPath: selectedRecordTile.attachmentPath,
+              attachmentMime: selectedRecordTile.attachmentMime,
+            },
+          ]
+        : [];
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -117,13 +126,13 @@ export const AdminRecordsPage = () => {
       toast.error('Please add a title or notes before saving.', { style: toastStyle });
       return;
     }
-    const firstImage = recordFiles.find((f) => f.type && f.type.startsWith('image/'));
+    const imageFiles = recordFiles.filter((f) => f.type && f.type.startsWith('image/'));
     setIsSaving(true);
     try {
       await medicalRecordService.createRecord(selectedRecordUser.id, {
         title: recordTitle.trim(),
         notes: recordNotes,
-        imageFile: firstImage || undefined,
+        imageFiles,
       });
       toast.success('Medical record saved successfully!', { style: toastStyle });
       const data = await medicalRecordService.getRecordsByUserId(selectedRecordUser.id);
@@ -259,9 +268,9 @@ export const AdminRecordsPage = () => {
                         className="p-5 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-start space-y-2 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 hover:border-primary/20 transition-all text-left"
                       >
                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 group-hover:text-primary transition-all shadow-sm overflow-hidden">
-                          {record.attachmentPath ? (
+                          {(record.attachmentPath || record.attachments?.[0]?.attachmentPath) ? (
                             <img
-                              src={`${baseURL}/uploads/${record.attachmentPath}`}
+                              src={`${baseURL}/uploads/${record.attachmentPath || record.attachments?.[0]?.attachmentPath}`}
                               alt=""
                               className="w-full h-full object-cover"
                             />
@@ -320,78 +329,42 @@ export const AdminRecordsPage = () => {
                       {selectedRecordTile.notes ?? '—'}
                     </p>
                   </div>
-                  {selectedRecordTile.attachmentPath && (
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Attachment</p>
-                      <div className="relative aspect-video w-full max-w-md rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 group">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPreviewImageUrl(`${baseURL}/uploads/${selectedRecordTile.attachmentPath}`)
-                          }
-                          className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
-                        >
-                          <img
-                            src={`${baseURL}/uploads/${selectedRecordTile.attachmentPath}`}
-                            alt="Record attachment"
-                            className="w-full h-full object-contain"
-                          />
-                        </button>
-                        <a
-                          href={`${baseURL}/uploads/${selectedRecordTile.attachmentPath}`}
-                          download={`record-attachment-${selectedRecordTile.id || 'image'}.jpg`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute top-2 right-2 p-2 rounded-lg bg-black/50 hover:bg-black/70 text-white transition-colors"
-                          aria-label="Download attachment"
-                        >
-                          <Download size={18} />
-                        </a>
-                      </div>
-                    </div>
-                  )}
-                  {selectedRecordTile.attachments && selectedRecordTile.attachments.length > 0 && (
+                  {selectedRecordAttachments.length > 0 && (
                     <div>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Attachments</p>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {selectedRecordTile.attachments.map((att, i) =>
-                          isImageType(att.type) ? (
-                            <div key={i} className="relative aspect-square w-full rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 group">
+                        {selectedRecordAttachments.map((att, i) => {
+                          const attachmentUrl = `${baseURL}/uploads/${att.attachmentPath}`;
+                          return (
+                            <div
+                              key={att.id || `${att.attachmentPath}-${i}`}
+                              className="relative aspect-square w-full rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 group"
+                            >
                               <button
                                 type="button"
-                                onClick={() => setPreviewImageUrl(att.dataUrl)}
+                                onClick={() => setPreviewImageUrl(attachmentUrl)}
                                 className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
                               >
                                 <img
-                                  src={att.dataUrl}
-                                  alt={att.name}
+                                  src={attachmentUrl}
+                                  alt="Record attachment"
                                   className="w-full h-full object-cover"
                                 />
                               </button>
                               <a
-                                href={att.dataUrl}
-                                download={att.name}
+                                href={attachmentUrl}
+                                download={`record-attachment-${att.id || selectedRecordTile.id || 'image'}.jpg`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 text-white transition-colors"
-                                aria-label="Download"
+                                aria-label="Download attachment"
                               >
                                 <Download size={14} />
                               </a>
                             </div>
-                          ) : (
-                            <a
-                              key={i}
-                              href={att.dataUrl}
-                              download={att.name}
-                              className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 hover:bg-slate-100 transition-all"
-                            >
-                              <File size={18} className="text-slate-500 shrink-0" />
-                              <span className="text-xs font-bold text-slate-700 truncate flex-1">{att.name}</span>
-                              <Download size={14} className="text-slate-400 shrink-0" />
-                            </a>
-                          )
-                        )}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -450,14 +423,14 @@ export const AdminRecordsPage = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Attachments (images & files)</label>
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Attachments (images)</label>
                     <div
                       onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed border-slate-100 rounded-xl p-5 flex flex-col items-center justify-center space-y-2 cursor-pointer hover:bg-slate-50 transition-all group"
                     >
                       <FileUp size={20} className="text-slate-300 group-hover:text-primary transition-colors" />
-                      <p className="text-xs font-black text-slate-400 uppercase">Upload files or images</p>
-                      <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*,.pdf,.doc,.docx" className="hidden" />
+                      <p className="text-xs font-black text-slate-400 uppercase">Upload images</p>
+                      <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*" className="hidden" />
                     </div>
                     {recordFiles.length > 0 && (
                       <div className="space-y-2">

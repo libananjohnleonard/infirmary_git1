@@ -13,17 +13,20 @@ export const medicalRecordService = {
 
   /**
    * Create a medical record. If imageFile is provided, sends multipart/form-data
-   * with title, notes, and image; otherwise sends JSON.
+   * with title, notes, and images; otherwise sends JSON.
    * @param {string} userId
-   * @param {{ title: string, notes?: string, imageFile?: File }} payload
+   * @param {{ title: string, notes?: string, imageFiles?: File[] }} payload
    */
   createRecord: async (userId, payload) => {
-    const { title, notes, imageFile } = payload || {};
-    if (imageFile && imageFile instanceof File) {
+    const { title, notes, imageFiles } = payload || {};
+    const files = Array.isArray(imageFiles) ? imageFiles : [];
+
+    if (files.length > 0) {
       const form = new FormData();
       form.append('title', title ?? '');
       form.append('notes', notes ?? '');
-      form.append('image', imageFile);
+      files.forEach((file) => form.append('images', file));
+
       const { data } = await api.post(`/api/medical-records/${userId}/records`, form, {
         headers: { 'Content-Type': undefined },
       });

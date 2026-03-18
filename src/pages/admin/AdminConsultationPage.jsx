@@ -29,11 +29,13 @@ export const AdminConsultationPage = () => {
   const searchedUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
-    return (consultationPatients || []).filter(
-      (user) =>
-        user.name.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q)
-    );
+    return (consultationPatients || []).filter((user) => {
+      const inName = user.name?.toLowerCase().includes(q);
+      const inEmail = user.email?.toLowerCase().includes(q);
+      const inStudent = user.studentNumber?.toLowerCase().includes(q);
+      const inEmployee = user.employeeNumber?.toLowerCase().includes(q);
+      return inName || inEmail || inStudent || inEmployee;
+    });
   }, [searchQuery, consultationPatients]);
 
   useEffect(() => {
@@ -105,6 +107,11 @@ export const AdminConsultationPage = () => {
                       <div>
                         <p className="font-black text-slate-800 text-sm">{user.name}</p>
                         <p className="text-xs text-slate-500 font-medium">{user.email}</p>
+                        {(user.studentNumber || user.employeeNumber) && (
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                            {user.studentNumber || user.employeeNumber}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <ChevronRight size={18} className="text-slate-300 group-hover:text-primary transition-all" />
