@@ -53,6 +53,7 @@ export const LandingPage = () => {
   const scanInputRef = useRef(null);
   const kioskSubmitLockRef = useRef(false);
   const lastProcessedScanRef = useRef('');
+  const qrAutoSubmitTimerRef = useRef(null);
 
   const formatIdInput = (raw) => {
     // Keep formatting simple to avoid blocking deletion:
@@ -60,6 +61,36 @@ export const LandingPage = () => {
     // - Trim spaces at the ends
     // The pattern (e.g. NS-00001 or 12-00001) is guided by the placeholder only.
     return raw.toUpperCase().trimStart();
+  };
+
+  const extractIdFromScanInput = (raw) => {
+    const text = String(raw || '').trim();
+    if (!text) return null;
+
+    // If scanner already gives the ID directly.
+    // Support modern IDs (NS-/EM-) and legacy student IDs (e.g. 22-00000).
+    const directMatch = text.match(/\b(?:NS-\d+|EM-\d+|\d{2}-\d+)\b/i);
+    if (directMatch?.[0]) return directMatch[0].toUpperCase();
+
+    // If scanner gives JSON payload, extract known fields.
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object') {
+        const candidate =
+          parsed.studentNumber ||
+          parsed.student_number ||
+          parsed.employeeNumber ||
+          parsed.employee_number ||
+          null;
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return candidate.trim().toUpperCase();
+        }
+      }
+    } catch {
+      // Ignore parse errors and continue.
+    }
+
+    return null;
   };
 
   // Preload carousel images to avoid lag on switch
@@ -164,48 +195,69 @@ export const LandingPage = () => {
 
   // Auto-submit when scanning QR code (scanner types full payload then Enter)
   useEffect(() => {
+    return () => {
+      if (qrAutoSubmitTimerRef.current) {
+        clearTimeout(qrAutoSubmitTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (kioskMode !== 'qr') return;
     if (kioskLoading || kioskSubmitLockRef.current) return;
+    if (showReceipt || kioskResult) return;
     const value = scanValue;
     const trimmed = value.trim();
     if (!trimmed) return;
 
-    // Heuristic: QR payload is usually our JSON string; sometimes scanners just return NS-/EM- directly.
-    const hasJsonBraces = trimmed.includes('{') && trimmed.includes('}');
-    const hasIdPattern = /\b(?:NS|EM)-\d+\b/i.test(trimmed);
-    if (!hasJsonBraces && !hasIdPattern) return;
-    if (lastProcessedScanRef.current === trimmed) return;
+    const extractedId = extractIdFromScanInput(trimmed);
+    if (!extractedId) return;
+    if (lastProcessedScanRef.current === extractedId) return;
 
-    (async () => {
-      kioskSubmitLockRef.current = true;
-      lastProcessedScanRef.current = trimmed;
-      try {
-        setShowReceipt(false);
-        setKioskLoading(true);
-        setKioskResult(null);
-        setKioskError(null);
-        const payload = { mode: 'qr', payload: trimmed };
-        const data = await authService.kioskCheckIn(payload);
-        setKioskResult(data);
-        setShowReceipt(true);
-        // Clear field so the scanner can be used again (also prevents Enter from resubmitting).
-        setScanValue('');
-      } catch (err) {
-        const resp = err?.response?.data;
-        const message = resp?.message || 'Failed to check in. Please try again.';
-        setKioskError({
-          message,
-          code: resp?.code || null,
-          user: resp?.user || null,
-        });
-      } finally {
-        setKioskLoading(false);
-        kioskSubmitLockRef.current = false;
-        // Prevent the input from getting stuck with the scanned payload (e.g. old/bad QR content).
-        setScanValue('');
+    if (qrAutoSubmitTimerRef.current) {
+      clearTimeout(qrAutoSubmitTimerRef.current);
+    }
+    qrAutoSubmitTimerRef.current = setTimeout(() => {
+      if (kioskSubmitLockRef.current) return;
+      if (lastProcessedScanRef.current === extractedId) return;
+
+      (async () => {
+        kioskSubmitLockRef.current = true;
+        lastProcessedScanRef.current = extractedId;
+        try {
+          setShowReceipt(false);
+          setKioskLoading(true);
+          setKioskResult(null);
+          setKioskError(null);
+          const payload = { mode: 'qr', payload: extractedId };
+          const data = await authService.kioskCheckIn(payload);
+          setKioskResult(data);
+          setShowReceipt(true);
+          // Clear field so the scanner can be used again (also prevents Enter from resubmitting).
+          setScanValue('');
+        } catch (err) {
+          const resp = err?.response?.data;
+          const message = resp?.message || 'Failed to check in. Please try again.';
+          setKioskError({
+            message,
+            code: resp?.code || null,
+            user: resp?.user || null,
+          });
+        } finally {
+          setKioskLoading(false);
+          kioskSubmitLockRef.current = false;
+          // Prevent the input from getting stuck with the scanned payload (e.g. old/bad QR content).
+          setScanValue('');
+        }
+      })();
+    }, 120);
+
+    return () => {
+      if (qrAutoSubmitTimerRef.current) {
+        clearTimeout(qrAutoSubmitTimerRef.current);
       }
-    })();
-  }, [kioskMode, scanValue, kioskLoading]);
+    };
+  }, [kioskMode, scanValue, kioskLoading, showReceipt, kioskResult]);
 
   return (
     <div className="flex-1">
@@ -441,7 +493,9 @@ export const LandingPage = () => {
                     value={scanValue}
                     onChange={(e) =>
                       setScanValue(
-                        kioskMode === 'id' ? formatIdInput(e.target.value) : e.target.value
+                        kioskMode === 'id'
+                          ? formatIdInput(e.target.value)
+                          : extractIdFromScanInput(e.target.value) || e.target.value
                       )
                     }
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary text-sm font-medium"
