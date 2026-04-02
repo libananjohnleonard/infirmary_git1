@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ReactCalendar from 'react-calendar';
@@ -151,6 +151,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   const navigate = useNavigate();
   const [date, setDate] = useState(startOfToday());
   const [formData, setFormData] = useState(() => initialFormData(user));
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     if (user?.name) {
@@ -158,7 +159,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
     }
   }, [user]);
 
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [lastBooked, setLastBooked] = useState(null);
 
@@ -215,6 +216,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitLockRef.current) return;
     if (!formData.service) {
       toast.error('Please select a service.');
       return;
@@ -233,6 +235,9 @@ export const BookingForm = ({ onBook, appointments, user }) => {
       return;
     }
 
+    submitLockRef.current = true;
+    setIsSubmitting(true);
+
     try {
       const appointment = await onBook({
         ...formData,
@@ -243,12 +248,13 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
       setLastBooked(appointment);
       setShowConfirmation(true);
-      setIsSubmitted(true);
     } catch (err) {
       const message = err.response?.data?.message || 'Failed to book appointment. Please try again.';
       toast.error(message);
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
     }
-    setTimeout(() => setIsSubmitted(false), 2000);
   };
 
   return (
@@ -429,12 +435,12 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
             <button
               type="submit"
-              disabled={isSubmitted || !formData.service || !formData.subcategory || !formData.timeSlot}
+              disabled={isSubmitting || !formData.service || !formData.subcategory || !formData.timeSlot}
               className={`w-full py-4 sm:py-5 rounded-xl sm:rounded-2xl font-black text-base sm:text-lg text-white transition-all flex items-center justify-center gap-3 shadow-xl ${
-                isSubmitted ? 'bg-emerald-500' : 'bg-primary hover:bg-primary-hover shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed'
+                isSubmitting ? 'bg-emerald-500' : 'bg-primary hover:bg-primary-hover shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed'
               }`}
             >
-              {isSubmitted ? (
+              {isSubmitting ? (
                 <>
                   <CheckCircle2 size={24} />
                   Processing...
