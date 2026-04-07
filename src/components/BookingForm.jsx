@@ -38,14 +38,16 @@ const subcategories = {
 };
 
 const commonPurposes = [
-  'General Checkup',
-  'Follow-up Visit',
-  'Emergency / Urgent Care',
+  'General Check Up',
+  'Follow Up Visit',
+  'Emergency/ Urgent Care',
   'Medical Certification',
-  'Laboratory Results Review',
-  'Physical Examination',
-  'Specific Pain / Concern',
-  'Dietary Counseling'
+  'Physical Example',
+  'Specific Pain/Concern',
+  'Dietary Counseling',
+  'OJT',
+  'Educational Tour',
+  'Sports'
 ];
 
 const MAX_SLOTS = 50;
@@ -167,7 +169,7 @@ const initialFormData = (user) => ({
   patientName: user?.name || '',
   service: '',
   subcategory: '',
-  purpose: 'General Checkup',
+  purpose: 'General Check Up',
   timeSlot: '',
   notes: '',
 });
