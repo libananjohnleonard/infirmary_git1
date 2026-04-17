@@ -38,14 +38,14 @@ export const AdminOverviewPage = () => {
   const appointmentStats = [
     { label: 'Total Appointments', value: appointments.length, icon: CalendarDays, color: 'text-slate-600', bg: 'bg-slate-100' },
     { label: 'Ongoing', value: appointments.filter((a) => a.status === 'Ongoing').length, icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Success', value: appointments.filter((a) => a.status === 'Success').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Cancelled', value: appointments.filter((a) => a.status === 'Cancelled').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'Attended/Finished', value: appointments.filter((a) => a.status === 'Completed').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Did Not Attend', value: appointments.filter((a) => a.status === 'Not Completed').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
   ];
 
   const queueStats = [
     { label: 'Queues Today', value: queues.length, icon: ListOrdered, color: 'text-slate-700', bg: 'bg-slate-100' },
     { label: 'Waiting', value: waiting, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Serving', value: serving, icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Being Served', value: serving, icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Completed', value: completed, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
   ];
 

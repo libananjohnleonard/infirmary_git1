@@ -12,29 +12,56 @@ export const medicalRecordService = {
   },
 
   /**
-   * Create a medical record. If imageFile is provided, sends multipart/form-data
-   * with title, notes, and images; otherwise sends JSON.
+   * Create a medical record and optionally upload attachments as JSON data URLs.
    * @param {string} userId
-   * @param {{ title: string, notes?: string, imageFiles?: File[] }} payload
+   * @param {{ title: string, notes?: string, attachmentFiles?: File[], imageFiles?: File[], queueId?: string, appointmentId?: string, recordType?: string, purpose?: string, isHardcopyVerified?: boolean, certificateIssued?: boolean }} payload
    */
   createRecord: async (userId, payload) => {
-    const { title, notes, imageFiles } = payload || {};
-    const files = Array.isArray(imageFiles) ? imageFiles : [];
+    const {
+      title,
+      notes,
+      attachmentFiles,
+      imageFiles,
+      queueId,
+      appointmentId,
+      recordType,
+      purpose,
+      isHardcopyVerified,
+      certificateIssued,
+    } = payload || {};
+    const files = Array.isArray(attachmentFiles)
+      ? attachmentFiles
+      : Array.isArray(imageFiles)
+        ? imageFiles
+        : [];
 
-    if (files.length > 0) {
-      const form = new FormData();
-      form.append('title', title ?? '');
-      form.append('notes', notes ?? '');
-      files.forEach((file) => form.append('images', file));
+    const attachments = await Promise.all(
+      files.map(
+        (file) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+              resolve({
+                name: file.name,
+                type: file.type || 'application/octet-stream',
+                dataUrl: typeof reader.result === 'string' ? reader.result : '',
+              });
+            reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
 
-      const { data } = await api.post(`/api/medical-records/${userId}/records`, form, {
-        headers: { 'Content-Type': undefined },
-      });
-      return data;
-    }
     const { data } = await api.post(`/api/medical-records/${userId}/records`, {
       title: title ?? '',
       notes: notes ?? '',
+      queueId: queueId ?? '',
+      appointmentId: appointmentId ?? '',
+      recordType: recordType ?? '',
+      purpose: purpose ?? '',
+      isHardcopyVerified: Boolean(isHardcopyVerified),
+      certificateIssued: Boolean(certificateIssued),
+      attachments,
     });
     return data;
   },

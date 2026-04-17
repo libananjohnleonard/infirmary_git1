@@ -430,7 +430,7 @@ export const SignupPage = () => {
             <div className="flex justify-center">
               <button
                 type="button"
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login/user')}
                 className="w-full sm:w-auto px-5 py-3 bg-primary text-white font-black rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/30 text-sm"
               >
                 Go to Login
@@ -442,7 +442,7 @@ export const SignupPage = () => {
         <div className="text-center pt-2 sm:pt-4">
           <p className="text-slate-500 font-medium text-sm sm:text-base md:text-lg">
             Already have an account?{" "}
-            <Link to="/login" className="text-primary font-black hover:underline">Sign In</Link>
+            <Link to="/login/user" className="text-primary font-black hover:underline">Sign In</Link>
           </p>
         </div>
       </motion.div>

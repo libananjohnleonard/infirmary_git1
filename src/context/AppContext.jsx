@@ -5,6 +5,7 @@ import { appointmentService } from '../services/appointmentService';
 import { notificationService } from '../services/notificationService';
 import { consultationService } from '../services/consultationService';
 import { queueService } from '../services/queueService';
+import { resolveQrValue, resolveUserQrCode } from '../utils/qrCode';
 
 const AppContext = createContext(null);
 
@@ -31,17 +32,34 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const authUser = getAuthUser();
+  const [authUser, setAuthUser] = useState(() => getAuthUser());
+  const getStoredSession = useCallback(() => {
+    const token = localStorage.getItem('authToken');
+    const user = getAuthUser();
+
+    if (!token || !user) {
+      return { token: null, user: null };
+    }
+
+    return { token, user };
+  }, []);
   const userProfile = authUser
     ? {
+        firstName: authUser.firstName || '',
+        middleName: authUser.middleName || '',
+        lastName: authUser.lastName || '',
         name: [authUser.firstName, authUser.middleName, authUser.lastName].filter(Boolean).join(' '),
         email: authUser.email,
         userType: authUser.userType || null,
+        pictureUrl: authUser.pictureUrl || null,
         studentNumber: authUser.studentNumber || null,
         employeeNumber: authUser.employeeNumber || null,
         college: authUser.college || '',
         program: authUser.program || '',
-        qrCode: authUser.qrCode || null,
+        idNumber: authUser.idNumber || null,
+        qrData: authUser.qrData || null,
+        qrCode: resolveUserQrCode(authUser),
+        qrValue: resolveQrValue(authUser),
         phone: authUser.phone || '',
         address: authUser.address || '',
         patientId: `P-${authUser.id?.slice(0, 8) || '00000'}`,
@@ -65,12 +83,33 @@ export const AppProvider = ({ children }) => {
         allergies: []
       };
 
+  const setStoredAuthUser = useCallback((user) => {
+    if (!user) {
+      localStorage.removeItem('authUser');
+      setAuthUser(null);
+      return;
+    }
+
+    localStorage.setItem('authUser', JSON.stringify(user));
+    setAuthUser(user);
+  }, []);
+
+  const refreshAuthUser = useCallback(() => {
+    setAuthUser(getAuthUser());
+  }, []);
+
+  const clearStoredSession = useCallback(() => {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUser');
+    setAuthUser(null);
+  }, []);
+
   const [notifications, setNotifications] = useState([]);
   const [notificationsUnreadCount, setNotificationsUnreadCount] = useState(0);
 
   const fetchNotifications = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
+    const { token, user } = getStoredSession();
+    if (!token || !user) {
       setNotifications([]);
       setNotificationsUnreadCount(0);
       return;
@@ -79,23 +118,26 @@ export const AppProvider = ({ children }) => {
       const { notifications: list, unreadCount } = await notificationService.getMyNotifications();
       setNotifications(list || []);
       setNotificationsUnreadCount(unreadCount ?? 0);
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearStoredSession();
+      }
       setNotifications([]);
       setNotificationsUnreadCount(0);
     }
-  }, []);
+  }, [clearStoredSession, getStoredSession]);
 
   const markNotificationAsRead = useCallback(async (id) => {
     try {
-      await notificationService.markAsRead(id);
+      const updated = await notificationService.markAsRead(id);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
+        prev.map((n) => (n.id === id ? { ...n, readAt: updated?.readAt || new Date().toISOString() } : n))
       );
       setNotificationsUnreadCount((c) => Math.max(0, c - 1));
     } catch {
-      // ignore
+      fetchNotifications();
     }
-  }, []);
+  }, [fetchNotifications]);
 
   const markAllNotificationsAsRead = useCallback(async () => {
     try {
@@ -105,9 +147,9 @@ export const AppProvider = ({ children }) => {
       );
       setNotificationsUnreadCount(0);
     } catch {
-      // ignore
+      fetchNotifications();
     }
-  }, []);
+  }, [fetchNotifications]);
 
   const [appointments, setAppointments] = useState([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
@@ -117,98 +159,112 @@ export const AppProvider = ({ children }) => {
   const [consultationLoading, setConsultationLoading] = useState(false);
 
   const fetchAppointments = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
+    const { token, user: currentUser } = getStoredSession();
+    if (!token || !currentUser) {
       setAppointments([]);
       setAppointmentsLoading(false);
       return;
     }
     try {
-      const [data, myQueues] = await Promise.all([
-        appointmentService.getMyAppointments(),
-        queueService.myToday().catch(() => []),
-      ]);
-      const queuesByApt = new Map();
-      (myQueues || []).forEach((q) => {
-        if (q.appointmentId) {
-          queuesByApt.set(q.appointmentId, q);
-        }
-      });
-      const enriched = (data || []).map((apt) => {
-        const q = queuesByApt.get(apt.id);
-        return q
-          ? {
-              ...apt,
-              queueNumber: q.queueNumber,
-              queueStatus: q.status,
-            }
-          : apt;
-      });
-      setAppointments(enriched);
-    } catch {
+      const isAdmin = ['admin', 'super_admin'].includes(currentUser?.userType || currentUser?.role);
+
+      if (isAdmin) {
+        const data = await appointmentService.getAllAppointments();
+        setAppointments(data || []);
+      } else {
+        const [data, myQueues] = await Promise.all([
+          appointmentService.getMyAppointments(),
+          queueService.myToday().catch(() => []),
+        ]);
+        const queuesByApt = new Map();
+        (myQueues || []).forEach((q) => {
+          if (q.appointmentId) {
+            queuesByApt.set(q.appointmentId, q);
+          }
+        });
+        const enriched = (data || []).map((apt) => {
+          const q = queuesByApt.get(apt.id);
+          return q
+            ? {
+                ...apt,
+                queueNumber: q.queueNumber,
+                queueStatus: q.status,
+              }
+            : apt;
+        });
+        setAppointments(enriched);
+      }
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearStoredSession();
+      }
       setAppointments([]);
     } finally {
       setAppointmentsLoading(false);
     }
-  }, []);
+  }, [clearStoredSession, getStoredSession]);
 
   const fetchConsultationPatients = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
+    const { token, user } = getStoredSession();
+    if (!token || !user) {
       setConsultationPatients([]);
       return;
     }
     try {
       const data = await consultationService.getPatients();
       setConsultationPatients(data || []);
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearStoredSession();
+      }
       setConsultationPatients([]);
     }
-  }, []);
+  }, [clearStoredSession, getStoredSession]);
 
   const fetchConsultationLogsForUser = useCallback(async (userId) => {
     if (!userId) return [];
-    const token = localStorage.getItem('authToken');
-    if (!token) return [];
+    const { token, user } = getStoredSession();
+    if (!token || !user) return [];
     try {
       setConsultationLoading(true);
       const logs = await consultationService.getLogsByUserId(userId);
       setConsultationLogsByUser((prev) => ({ ...prev, [userId]: logs || [] }));
       return logs || [];
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearStoredSession();
+      }
       setConsultationLogsByUser((prev) => ({ ...prev, [userId]: [] }));
       return [];
     } finally {
       setConsultationLoading(false);
     }
-  }, []);
+  }, [clearStoredSession, getStoredSession]);
 
   const fetchAllAppointments = useCallback(async () => {
-    const token = localStorage.getItem('authToken');
-    if (!token) return [];
+    const { token, user } = getStoredSession();
+    if (!token || !user) return [];
     try {
       const data = await appointmentService.getAllAppointments();
       setAppointments(data);
       return data;
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearStoredSession();
+      }
       return [];
     }
-  }, []);
+  }, [clearStoredSession, getStoredSession]);
 
   useEffect(() => {
     fetchAppointments();
-  }, []);
-
-  useEffect(() => {
     fetchNotifications();
-  }, [fetchNotifications]);
-
-  useEffect(() => {
     fetchConsultationPatients();
-  }, [fetchConsultationPatients]);
+  }, [authUser, fetchAppointments, fetchNotifications, fetchConsultationPatients]);
 
   const handleBook = async (newApt) => {
-    const appointment = await appointmentService.book({
+    const reschedulable = appointments.find((apt) => apt.status === 'Not Completed');
+    const payload = {
       patientName: newApt.patientName,
       service: newApt.service,
       subcategory: newApt.subcategory,
@@ -216,22 +272,31 @@ export const AppProvider = ({ children }) => {
       date: newApt.date,
       time: newApt.time,
       notes: newApt.notes,
+    };
+    const appointment = reschedulable
+      ? await appointmentService.reschedule(reschedulable.id, payload)
+      : await appointmentService.book(payload);
+
+    setAppointments((prev) => {
+      if (!reschedulable) {
+        return [appointment, ...prev];
+      }
+      return prev.map((apt) => (apt.id === reschedulable.id ? appointment : apt));
     });
-    setAppointments((prev) => [appointment, ...prev]);
-    fetchNotifications();
+    await fetchNotifications();
     return appointment;
   };
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (id, reason = '') => {
     try {
-      await appointmentService.cancel(id);
+      await appointmentService.cancel(id, reason);
       setAppointments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: 'Cancelled' } : a))
+        prev.map((a) => (a.id === id ? { ...a, status: 'Not Completed' } : a))
       );
       fetchNotifications();
-      toast.success('Appointment cancelled.');
+      toast.success('Appointment marked as not completed.');
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to cancel appointment.';
+      const message = err.response?.data?.message || 'Failed to update appointment status.';
       toast.error(message);
     }
   };
@@ -330,6 +395,7 @@ export const AppProvider = ({ children }) => {
   const logout = useCallback(() => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('authUser');
+    setAuthUser(null);
   }, []);
 
   useEffect(() => {
@@ -342,6 +408,9 @@ export const AppProvider = ({ children }) => {
 
   const value = {
     userProfile,
+    authUser,
+    setStoredAuthUser,
+    refreshAuthUser,
     logout,
     consultationPatients,
     consultationLogsByUser,

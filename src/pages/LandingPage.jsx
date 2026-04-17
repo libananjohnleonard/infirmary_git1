@@ -5,7 +5,6 @@ import {
   ShieldCheck,
   Apple,
   ArrowRight,
-  QrCode,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import logoImg from '../assets/logo.jpg';
@@ -69,7 +68,7 @@ export const LandingPage = () => {
   return (
     <div className="flex-1">
       <main>
-        <section className="relative min-h-[85vh] sm:min-h-[700px] sm:h-[700px] overflow-hidden">
+        <section className="relative min-h-[85vh] sm:min-h-175 sm:h-175 overflow-hidden">
           {news.map((item, i) => (
             <div
               key={i}
@@ -84,7 +83,7 @@ export const LandingPage = () => {
                 className="absolute inset-0 bg-cover bg-center"
                 style={{ backgroundImage: `url(${item.image})` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-900/95 via-slate-900/80 to-slate-900/60 sm:to-transparent" />
+                <div className="absolute inset-0 bg-linear-to-r from-slate-900/95 via-slate-900/80 to-slate-900/60 sm:to-transparent" />
               </div>
               <div className="relative h-full max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center py-20 sm:py-0">
                 <div className="max-w-2xl space-y-4 sm:space-y-8">
@@ -100,7 +99,7 @@ export const LandingPage = () => {
                   </p>
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 pt-2 sm:pt-4">
                     <button
-                      onClick={() => navigate('/signup')}
+                      onClick={() => navigate('/login/user')}
                       className="w-full sm:w-auto px-6 py-4 sm:px-10 sm:py-5 bg-primary text-white font-black rounded-2xl hover:bg-primary-hover transition-all shadow-2xl shadow-primary/40 flex items-center justify-center gap-3 group"
                     >
                       Book Appointment{' '}
@@ -109,13 +108,6 @@ export const LandingPage = () => {
                         className="group-hover:translate-x-1 transition-transform shrink-0"
                       />
                     </button>
-                    {/* <button
-                      onClick={() => navigate('/kiosk')}
-                      className="w-full sm:w-auto px-6 py-4 sm:px-10 sm:py-5 bg-white/10 backdrop-blur-md border border-white/30 text-white font-black rounded-2xl hover:bg-white/20 transition-all flex items-center justify-center gap-3 group"
-                    >
-                      Kiosk Check-in
-                      <QrCode size={20} className="shrink-0" />
-                    </button> */}
                   </div>
                 </div>
               </div>
@@ -135,9 +127,9 @@ export const LandingPage = () => {
         </section>
 
         <section className="py-16 sm:py-24 md:py-32 relative">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-slate-50 to-white -z-20"></div>
-          <div className="absolute top-40 left-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] -z-10 hidden sm:block"></div>
-          <div className="absolute bottom-40 right-1/4 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] -z-10 hidden sm:block"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-slate-50 to-white -z-20"></div>
+          <div className="absolute top-40 left-1/4 w-125 h-125 bg-primary/5 rounded-full blur-[120px] -z-10 hidden sm:block"></div>
+          <div className="absolute bottom-40 right-1/4 w-125 h-125 bg-primary/10 rounded-full blur-[120px] -z-10 hidden sm:block"></div>
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="text-center space-y-4 sm:space-y-6 mb-12 sm:mb-24">
@@ -182,7 +174,7 @@ export const LandingPage = () => {
                   className="bg-white p-6 sm:p-8 md:p-12 rounded-2xl sm:rounded-[3.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-primary/10 transition-all group relative overflow-hidden"
                 >
                   <div
-                    className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+                    className={`absolute inset-0 bg-linear-to-br ${s.color} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
                   ></div>
                   <div className="relative z-10">
                     <div
@@ -214,8 +206,8 @@ export const LandingPage = () => {
                   {[
                     {
                       step: '01',
-                      title: 'Sign Up',
-                      desc: 'Register as a student or staff member to use the University Infirmary booking system.',
+                      title: 'Sign In',
+                      desc: 'Use your existing student or staff account to access the University Infirmary booking system.',
                     },
                     {
                       step: '02',
@@ -245,8 +237,8 @@ export const LandingPage = () => {
                   ))}
                 </div>
               </div>
-              <div className="relative order-first lg:order-none flex flex-col items-center sm:block">
-                <div className="aspect-square w-full max-w-sm sm:max-w-none bg-gradient-to-br from-primary to-primary-hover rounded-3xl sm:rounded-[4rem] rotate-0 sm:rotate-3 shadow-2xl shadow-primary/40 overflow-hidden">
+              <div className="relative order-first lg:order-0 flex flex-col items-center sm:block">
+                <div className="aspect-square w-full max-w-sm sm:max-w-none bg-linear-to-br from-primary to-primary-hover rounded-3xl sm:rounded-[4rem] rotate-0 sm:rotate-3 shadow-2xl shadow-primary/40 overflow-hidden">
                   <img
                     src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=1000"
                     alt="School nurse and student in infirmary"

@@ -19,8 +19,8 @@ export const ClientDashboardPage = () => {
   const stats = [
     { label: 'Total Visits', value: appointments.length, icon: CalendarDays, color: 'text-slate-800', bg: 'bg-slate-50' },
     { label: 'Ongoing', value: appointments.filter((a) => a.status === 'Ongoing').length, icon: PlayCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Success', value: appointments.filter((a) => a.status === 'Success').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Cancelled', value: appointments.filter((a) => a.status === 'Cancelled').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'Completed', value: appointments.filter((a) => a.status === 'Completed').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Not Completed', value: appointments.filter((a) => a.status === 'Not Completed').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
   ];
 
   return (

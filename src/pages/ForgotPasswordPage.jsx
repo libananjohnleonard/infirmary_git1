@@ -58,7 +58,7 @@ export const ForgotPasswordPage = () => {
               </p>
             </div>
             <Link
-              to="/login"
+              to="/login/user"
               className="flex items-center justify-center gap-2 w-full py-4 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200 transition-all"
             >
               <ArrowLeft size={18} />
@@ -92,7 +92,7 @@ export const ForgotPasswordPage = () => {
               {loading ? 'Sending...' : 'Send reset link'}
             </button>
             <Link
-              to="/login"
+              to="/login/user"
               className="flex items-center justify-center gap-2 text-slate-500 font-bold text-sm hover:text-primary transition-colors"
             >
               <ArrowLeft size={16} />

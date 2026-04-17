@@ -16,6 +16,7 @@ import logoImg from '../assets/logo.jpg';
 import { AnimatePresence, motion } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { NotificationDropdown } from '../components/NotificationDropdown';
+import { getProfileImageSrc, handleProfileImageError } from '../utils/profileImage';
 
 const navItems = [
   { to: '/app', end: true, label: 'Dashboard', icon: LayoutDashboard },
@@ -97,7 +98,7 @@ export const ClientDashboardLayout = () => {
 
   const token = localStorage.getItem('authToken');
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login/user" replace />;
   }
 
   const userTypeLabel = getUserTypeLabel(userProfile?.userType);
@@ -157,7 +158,7 @@ export const ClientDashboardLayout = () => {
           <button
             onClick={() => {
               logout();
-              navigate('/login', { replace: true });
+              navigate('/login/user', { replace: true });
             }}
             className="w-full flex items-center gap-3 sm:gap-4 p-3 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all"
           >
@@ -236,7 +237,12 @@ export const ClientDashboardLayout = () => {
                   <p className="text-xs text-slate-500">{userTypeLabel}</p>
                 </div>
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 ring-2 ring-transparent group-hover:ring-primary/20">
-                  <User size={18} className="sm:w-5 sm:h-5" />
+                  <img
+                    src={getProfileImageSrc(userProfile.pictureUrl)}
+                    alt={userProfile.name}
+                    className="w-full h-full rounded-full object-cover"
+                    onError={handleProfileImageError}
+                  />
                 </div>
                 <ChevronDown size={16} className={`hidden sm:block text-slate-400 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -270,7 +276,7 @@ export const ClientDashboardLayout = () => {
                         onClick={() => {
                           setIsProfileOpen(false);
                           logout();
-                          navigate('/login', { replace: true });
+                          navigate('/login/user', { replace: true });
                         }}
                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-600 hover:bg-red-50 font-medium text-sm transition-colors"
                       >

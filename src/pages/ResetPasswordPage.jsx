@@ -39,7 +39,7 @@ export const ResetPasswordPage = () => {
       await authService.resetPassword(token, newPassword, confirmPassword);
       setSuccess(true);
       toast.success('Your password has been reset. You can sign in now.');
-      setTimeout(() => navigate('/login'), 2000);
+      setTimeout(() => navigate('/login/user'), 2000);
     } catch (err) {
       const message = err?.response?.data?.message || 'Invalid or expired link. Please request a new reset.';
       toast.error(message);
@@ -60,7 +60,7 @@ export const ResetPasswordPage = () => {
           <Link to="/forgot-password" className="inline-block py-3 px-6 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover">
             Request reset link
           </Link>
-          <Link to="/login" className="block text-slate-500 font-bold text-sm hover:text-primary">Back to sign in</Link>
+          <Link to="/login/user" className="block text-slate-500 font-bold text-sm hover:text-primary">Back to sign in</Link>
         </motion.div>
       </div>
     );
@@ -79,7 +79,7 @@ export const ResetPasswordPage = () => {
           </div>
           <h2 className="text-2xl font-black text-slate-900">Password reset</h2>
           <p className="text-slate-600">Redirecting you to sign in...</p>
-          <Link to="/login" className="inline-block py-3 px-6 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover">
+          <Link to="/login/user" className="inline-block py-3 px-6 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover">
             Sign in now
           </Link>
         </motion.div>
@@ -167,7 +167,7 @@ export const ResetPasswordPage = () => {
             {loading ? 'Updating...' : 'Reset password'}
           </button>
           <Link
-            to="/login"
+            to="/login/user"
             className="block text-center text-slate-500 font-bold text-sm hover:text-primary transition-colors"
           >
             Back to sign in

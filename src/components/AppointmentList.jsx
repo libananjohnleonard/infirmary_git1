@@ -31,17 +31,19 @@ const ServiceIcon = ({ service }) => {
 
 const StatusBadge = ({ status }) => {
   const styles = {
+    'Waiting': 'bg-amber-50 text-amber-700 border-amber-100',
     'Ongoing': 'bg-blue-50 text-blue-600 border-blue-100',
-    'Cancelled': 'bg-red-50 text-red-600 border-red-100',
+    'Not Completed': 'bg-red-50 text-red-600 border-red-100',
     'Moved': 'bg-amber-50 text-amber-600 border-amber-100',
-    'Success': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    'Completed': 'bg-emerald-50 text-emerald-600 border-emerald-100',
   };
 
   const icons = {
+    'Waiting': <Clock size={12} />,
     'Ongoing': <PlayCircle size={12} />,
-    'Cancelled': <XCircle size={12} />,
+    'Not Completed': <XCircle size={12} />,
     'Moved': <RefreshCw size={12} />,
-    'Success': <CheckCircle size={12} />,
+    'Completed': <CheckCircle size={12} />,
   };
 
   return (
@@ -279,8 +281,14 @@ export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClie
               </div>
             )}
 
+            {isClient && apt.status === 'Not Completed' && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                This appointment was not attended. Book again to reschedule for another time.
+              </div>
+            )}
+
             <div className="mt-6 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              {!isClient && onUpdateStatus && apt.status !== 'Cancelled' && apt.status !== 'Success' && (
+              {!isClient && onUpdateStatus && apt.status !== 'Not Completed' && apt.status !== 'Completed' && (
                 <>
                   <button 
                     onClick={(e) => { e.stopPropagation(); onUpdateStatus(apt.id, 'Moved'); }}
@@ -289,10 +297,10 @@ export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClie
                     Move
                   </button>
                   <button 
-                    onClick={(e) => { e.stopPropagation(); onUpdateStatus(apt.id, 'Success'); }}
+                    onClick={(e) => { e.stopPropagation(); onUpdateStatus(apt.id, 'Completed'); }}
                     className="flex-1 py-2 text-xs font-medium border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"
                   >
-                    Success
+                    Completed
                   </button>
                 </>
               )}
@@ -300,7 +308,7 @@ export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClie
                 <button
                   onClick={(e) => { e.stopPropagation(); onCancel(apt.id); }}
                   className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                  title="Cancel Appointment"
+                  title="Mark as Not Completed"
                 >
                   <Trash2 size={18} />
                 </button>

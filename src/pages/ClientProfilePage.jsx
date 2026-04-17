@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { ProfileView } from '../components/ProfileView';
 
 export const ClientProfilePage = () => {
-  const { userProfile } = useApp();
+  const { userProfile, setStoredAuthUser } = useApp();
 
   return (
     <motion.div
@@ -12,7 +12,7 @@ export const ClientProfilePage = () => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
     >
-      <ProfileView user={userProfile} />
+      <ProfileView user={userProfile} onUserUpdated={setStoredAuthUser} />
     </motion.div>
   );
 };

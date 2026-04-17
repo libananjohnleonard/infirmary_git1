@@ -52,7 +52,7 @@ export const AdminCreateAdminPage = () => {
     }
     setLoading(true);
     try {
-      await adminService.createAdminUser({
+      const result = await adminService.createAdminUser({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         middleName: form.middleName.trim() || undefined,
@@ -62,7 +62,8 @@ export const AdminCreateAdminPage = () => {
         password: form.password,
         confirmPassword: form.confirmPassword,
       });
-      toast.success('Admin account created successfully.', { style: toastStyle });
+      const loginId = result?.loginId || form.email.trim();
+      toast.success(`Admin account created. Login ID: ${loginId}`, { style: toastStyle });
       setForm(initialForm);
     } catch (err) {
       const message = err?.response?.data?.message || 'Failed to create admin account.';

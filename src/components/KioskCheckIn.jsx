@@ -444,6 +444,10 @@ export function KioskCheckIn() {
         <p className="font-bold">
           {kioskError.code === 'NO_APPOINTMENT_TODAY'
             ? 'No appointment found'
+            : kioskError.code === 'APPOINTMENT_SKIPPED'
+              ? 'Appointment skipped'
+              : kioskError.code === 'APPOINTMENT_TOO_EARLY'
+                ? 'Too early for check-in'
             : 'Check-in could not be completed'}
         </p>
         <p>{kioskError.message}</p>

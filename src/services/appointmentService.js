@@ -14,6 +14,19 @@ export const appointmentService = {
     return data;
   },
 
+  reschedule: async (id, payload) => {
+    const { data } = await api.patch(`/api/appointments/${id}/reschedule`, {
+      patientName: payload.patientName,
+      service: payload.service,
+      subcategory: payload.subcategory,
+      purpose: payload.purpose,
+      date: payload.date,
+      time: payload.time,
+      notes: payload.notes || '',
+    });
+    return data;
+  },
+
   getMyAppointments: async () => {
     const { data } = await api.get('/api/appointments');
     return data;
@@ -29,8 +42,10 @@ export const appointmentService = {
     return data;
   },
 
-  cancel: async (id) => {
-    const { data } = await api.post(`/api/appointments/${id}/cancel`);
+  cancel: async (id, reason) => {
+    const { data } = await api.post(`/api/appointments/${id}/cancel`, {
+      reason: reason || '',
+    });
     return data;
   },
 

@@ -5,7 +5,7 @@ import logoImg from '../assets/logo.jpg';
 export const PublicHeader = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const currentView = location.pathname === '/login' ? 'login' : location.pathname === '/signup' ? 'signup' : 'landing';
+  const isUserLogin = location.pathname === '/login' || location.pathname === '/login/user';
 
   return (
     <nav className="bg-white/80 backdrop-blur-xl border-b border-primary/10 sticky top-0 z-50">
@@ -20,11 +20,8 @@ export const PublicHeader = () => {
           </div>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
-          {currentView !== 'login' && (
-            <button onClick={() => navigate('/login')} className="px-6 py-2.5 text-slate-600 font-bold hover:text-primary transition-colors text-sm md:text-base">Login</button>
-          )}
-          {currentView !== 'signup' && (
-            <button onClick={() => navigate('/signup')} className="px-6 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 text-sm md:text-base">Sign Up</button>
+          {!isUserLogin && (
+            <button onClick={() => navigate('/login/user')} className="px-6 py-2.5 text-slate-600 font-bold hover:text-primary transition-colors text-sm md:text-base">Login</button>
           )}
         </div>
       </div>

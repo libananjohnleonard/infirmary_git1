@@ -4,6 +4,7 @@ export const activityLogService = {
   getLogs: async (params = {}) => {
     const searchParams = new URLSearchParams();
     if (params.actionType) searchParams.set('actionType', params.actionType);
+    if (params.scope) searchParams.set('scope', params.scope);
     if (params.fromDate) searchParams.set('fromDate', params.fromDate);
     if (params.toDate) searchParams.set('toDate', params.toDate);
     if (params.limit != null) searchParams.set('limit', params.limit);

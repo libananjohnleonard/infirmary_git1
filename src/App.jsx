@@ -7,7 +7,6 @@ import { ClientDashboardLayout } from './layouts/ClientDashboardLayout';
 import { AdminDashboardLayout } from './layouts/AdminDashboardLayout';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
-import { SignupPage } from './pages/SignupPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ClientDashboardPage } from './pages/ClientDashboardPage';
@@ -19,8 +18,9 @@ import { AdminAppointmentsPage } from './pages/admin/AdminAppointmentsPage';
 import { AdminConsultationPage } from './pages/admin/AdminConsultationPage';
 import { AdminRecordsPage } from './pages/admin/AdminRecordsPage';
 import { AdminSystemLogsPage } from './pages/admin/AdminSystemLogsPage';
-import { AdminCreateAdminPage } from './pages/admin/AdminCreateAdminPage';
 import { AdminQueuePage } from './pages/admin/AdminQueuePage';
+import { AdminAccountsPage } from './pages/admin/AdminAccountsPage';
+import { AdminUserControlPage } from './pages/admin/AdminUserControlPage';
 import { KioskLandingPage } from './pages/KioskLandingPage';
 import { KioskAppointmentPage } from './pages/KioskAppointmentPage';
 
@@ -32,12 +32,14 @@ export default function App() {
         {/* Kiosk: full-screen check-in (no public header) */}
         <Route path="/kiosk" element={<KioskLandingPage />} />
         <Route path="/kiosk/appointment" element={<KioskAppointmentPage />} />
+        <Route path="/login/admin" element={<LoginPage variant="admin" />} />
 
         {/* Public routes: header + Outlet */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/login" element={<Navigate to="/login/user" replace />} />
+          <Route path="/login/user" element={<LoginPage variant="user" />} />
+          <Route path="/signup" element={<Navigate to="/login/user" replace />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
@@ -57,7 +59,9 @@ export default function App() {
           <Route path="queues" element={<AdminQueuePage />} />
           <Route path="consultation" element={<AdminConsultationPage />} />
           <Route path="records" element={<AdminRecordsPage />} />
-          <Route path="create-admin" element={<AdminCreateAdminPage />} />
+          <Route path="accounts" element={<AdminAccountsPage />} />
+          <Route path="user-control" element={<AdminUserControlPage />} />
+          <Route path="create-admin" element={<Navigate to="/admin/accounts" replace />} />
           <Route path="logs" element={<AdminSystemLogsPage />} />
         </Route>
 

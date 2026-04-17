@@ -311,8 +311,8 @@ export const AdminDashboard = ({ appointments, onUpdateStatus, onLogout, mockUse
               {[
                 { label: 'Total Appointments', value: appointments.length, icon: CalendarDays, color: 'text-slate-600', bg: 'bg-slate-100' },
                 { label: 'Ongoing', value: appointments.filter(a => a.status === 'Ongoing').length, icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50' },
-                { label: 'Success', value: appointments.filter(a => a.status === 'Success').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                { label: 'Cancelled', value: appointments.filter(a => a.status === 'Cancelled').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' }
+                { label: 'Completed', value: appointments.filter(a => a.status === 'Completed').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'Not Completed', value: appointments.filter(a => a.status === 'Not Completed').length, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' }
               ].map((stat, i) => (
                 <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
                   <div className="flex items-center justify-between mb-3">
@@ -517,8 +517,8 @@ export const AdminDashboard = ({ appointments, onUpdateStatus, onLogout, mockUse
                   >
                     <option value="All">All Status</option>
                     <option value="Ongoing">Ongoing</option>
-                    <option value="Success">Success</option>
-                    <option value="Cancelled">Cancelled</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Not Completed">Not Completed</option>
                   </select>
                 </div>
               </div>
@@ -564,14 +564,14 @@ export const AdminDashboard = ({ appointments, onUpdateStatus, onLogout, mockUse
                         value={apt.status}
                         onChange={(e) => onUpdateStatus(apt.id, e.target.value)}
                         className={`px-1.5 py-1 rounded-md font-bold text-[9px] border-2 transition-all focus:outline-none ${
-                          apt.status === 'Success' ? 'border-emerald-100 bg-emerald-50 text-emerald-600' :
-                          apt.status === 'Cancelled' ? 'border-red-100 bg-red-50 text-red-600' :
+                          apt.status === 'Completed' ? 'border-emerald-100 bg-emerald-50 text-emerald-600' :
+                          apt.status === 'Not Completed' ? 'border-red-100 bg-red-50 text-red-600' :
                           'border-blue-100 bg-blue-50 text-blue-600'
                         }`}
                       >
                         <option value="Ongoing">Ongoing</option>
-                        <option value="Success">Success</option>
-                        <option value="Cancelled">Cancelled</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Not Completed">Not Completed</option>
                       </select>
                     </div>
                   ))}

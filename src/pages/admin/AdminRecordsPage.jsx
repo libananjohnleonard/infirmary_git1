@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   UserSearch,
   Search,
@@ -33,7 +34,47 @@ function formatRecordDate(recordedAt) {
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
 
+function buildQueueDraft(queueContext) {
+  const service = queueContext?.appointment?.service || 'Consultation';
+  const subcategory = queueContext?.appointment?.subcategory;
+  const purpose = queueContext?.appointment?.purpose;
+  const appointmentCode = queueContext?.appointment?.code;
+  const queueNumber = queueContext?.queueNumber;
+  const serviceLabel = subcategory ? `${service} - ${subcategory}` : service;
+  const isCertification = String(subcategory || '').toLowerCase() === 'certification';
+
+  return {
+    title: isCertification ? `${service} Certification Report` : `${serviceLabel} Medical Report`,
+    recordType: serviceLabel,
+    purpose: purpose || '',
+    defaultNotes: [
+      queueNumber ? `Queue Number: ${queueNumber}` : null,
+      `Service: ${serviceLabel}`,
+      purpose ? `Requested Purpose: ${purpose}` : null,
+      appointmentCode ? `Appointment Code: ${appointmentCode}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  };
+}
+
+function isImageAttachment(attachment) {
+  const mime = attachment?.attachmentMime || '';
+  const path = attachment?.attachmentPath || '';
+  return mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
+}
+
 export const AdminRecordsPage = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const storedQueueContext = (() => {
+    try {
+      const raw = sessionStorage.getItem('adminActiveRecordContext');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [recordsSearchQuery, setRecordsSearchQuery] = useState('');
@@ -44,10 +85,14 @@ export const AdminRecordsPage = () => {
   const [isAddingRecord, setIsAddingRecord] = useState(false);
   const [recordTitle, setRecordTitle] = useState('');
   const [recordNotes, setRecordNotes] = useState('');
+  const [recordDefaultNotes, setRecordDefaultNotes] = useState('');
   const [recordFiles, setRecordFiles] = useState([]);
+  const [hardcopyVerified, setHardcopyVerified] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const fileInputRef = useRef(null);
+  const consumedQueueContextRef = useRef(null);
+  const queueContext = location.state?.queueContext || storedQueueContext || null;
 
   useEffect(() => {
     const loadPatients = async () => {
@@ -69,8 +114,10 @@ export const AdminRecordsPage = () => {
     if (!q) return [];
     return (patients || []).filter(
       (user) =>
-        user.name.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q)
+        user.name?.toLowerCase().includes(q) ||
+        user.email?.toLowerCase().includes(q) ||
+        user.studentNumber?.toLowerCase().includes(q) ||
+        user.employeeNumber?.toLowerCase().includes(q)
     );
   }, [recordsSearchQuery, patients]);
 
@@ -95,8 +142,40 @@ export const AdminRecordsPage = () => {
     return () => { cancelled = true; };
   }, [selectedRecordUser]);
 
+  useEffect(() => {
+    if (!queueContext?.user?.id) return;
+    if (consumedQueueContextRef.current === queueContext.queueId) return;
+
+    const matchedPatient =
+      patients.find((patient) => patient.id === queueContext.user.id) ||
+      patients.find((patient) => patient.email === queueContext.user.email);
+    const targetPatient = matchedPatient || {
+      id: queueContext.user.id,
+      name: queueContext.user.name || queueContext.appointment?.patientName || 'Unknown patient',
+      email: queueContext.user.email || '',
+      studentNumber: queueContext.user.studentNumber || null,
+      employeeNumber: queueContext.user.employeeNumber || null,
+    };
+
+    const draft = buildQueueDraft(queueContext);
+    setSelectedRecordUser(targetPatient);
+    setSelectedRecordTile(null);
+    setIsAddingRecord(true);
+    setRecordTitle(draft.title);
+    setRecordDefaultNotes(draft.defaultNotes);
+    setRecordNotes('');
+    setRecordFiles([]);
+    setHardcopyVerified(false);
+    consumedQueueContextRef.current = queueContext.queueId;
+    sessionStorage.removeItem('adminActiveRecordContext');
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, navigate, patients, queueContext]);
+
   const userRecords = apiRecords;
   const isViewingRecord = selectedRecordTile && !isAddingRecord;
+  const isCertificationFlow =
+    selectedRecordUser?.id === queueContext?.user?.id &&
+    String(queueContext?.appointment?.subcategory || '').toLowerCase() === 'certification';
   const selectedRecordAttachments =
     selectedRecordTile?.attachments?.length > 0
       ? selectedRecordTile.attachments
@@ -122,17 +201,36 @@ export const AdminRecordsPage = () => {
 
   const handleSaveRecord = async () => {
     if (!selectedRecordUser) return;
-    if (!(recordTitle.trim() || recordNotes.trim())) {
-      toast.error('Please add a title or notes before saving.', { style: toastStyle });
+    if (!recordNotes.trim()) {
+      toast.error('Please add remarks or findings before saving.', { style: toastStyle });
       return;
     }
-    const imageFiles = recordFiles.filter((f) => f.type && f.type.startsWith('image/'));
+    if (isCertificationFlow && recordFiles.length === 0) {
+      toast.error('Please upload at least one requirement file before issuing the certificate.', { style: toastStyle });
+      return;
+    }
+    if (isCertificationFlow && !hardcopyVerified) {
+      toast.error('Please confirm hardcopy verification before completing this certification.', { style: toastStyle });
+      return;
+    }
+
+    const combinedNotes = [recordDefaultNotes, '', 'Remarks / Findings:', recordNotes.trim()]
+      .filter(Boolean)
+      .join('\n');
+
     setIsSaving(true);
     try {
+      const activeDraft = queueContext?.user?.id === selectedRecordUser.id ? buildQueueDraft(queueContext) : null;
       await medicalRecordService.createRecord(selectedRecordUser.id, {
         title: recordTitle.trim(),
-        notes: recordNotes,
-        imageFiles,
+        notes: combinedNotes,
+        attachmentFiles: recordFiles,
+        queueId: queueContext?.user?.id === selectedRecordUser.id ? queueContext?.queueId : '',
+        appointmentId: queueContext?.user?.id === selectedRecordUser.id ? queueContext?.appointment?.id : '',
+        recordType: activeDraft?.recordType || recordTitle.trim(),
+        purpose: activeDraft?.purpose || '',
+        isHardcopyVerified: isCertificationFlow ? hardcopyVerified : false,
+        certificateIssued: isCertificationFlow,
       });
       toast.success('Medical record saved successfully!', { style: toastStyle });
       const data = await medicalRecordService.getRecordsByUserId(selectedRecordUser.id);
@@ -148,13 +246,19 @@ export const AdminRecordsPage = () => {
     setIsAddingRecord(false);
     setRecordTitle('');
     setRecordNotes('');
+    setRecordDefaultNotes('');
     setRecordFiles([]);
+    setHardcopyVerified(false);
+    sessionStorage.removeItem('adminActiveRecordContext');
   };
 
   const goBackToTiles = () => {
     setSelectedRecordTile(null);
     setIsAddingRecord(false);
     setPreviewImageUrl(null);
+    setRecordDefaultNotes('');
+    setHardcopyVerified(false);
+    sessionStorage.removeItem('adminActiveRecordContext');
   };
 
   return (
@@ -164,60 +268,114 @@ export const AdminRecordsPage = () => {
         <p className="text-sm text-slate-500 font-medium">Data keeping and patient history management</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-5">
-          <div className="space-y-3">
-            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <UserSearch size={20} className="text-primary" />
-              Search Patient
-            </h3>
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
-              <input
-                type="text"
-                placeholder="Search by name or email..."
-                value={recordsSearchQuery}
-                onChange={(e) => setRecordsSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium"
-              />
+      <div className="space-y-6">
+        <div className="bg-gradient-to-br from-white via-slate-50 to-emerald-50/40 p-4 sm:p-5 rounded-[1.5rem] border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-black text-primary uppercase tracking-[0.24em]">Record Workspace</p>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 flex items-center gap-2">
+                <UserSearch size={18} className="text-primary" />
+                Search Patient
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">
+                Search first, then review existing entries or create a new medical record below.
+              </p>
             </div>
+            <div className="self-start lg:self-auto px-3 py-2 rounded-xl bg-white/80 border border-slate-200 text-[11px] font-semibold text-slate-600">
+              {patientsLoading ? 'Loading patient list...' : `${patients.length} patients available`}
+            </div>
+          </div>
+          <div className="relative group">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={20} />
+            <input
+              type="text"
+              placeholder="Search by name, student ID, employee ID, or email..."
+              value={recordsSearchQuery}
+              onChange={(e) => setRecordsSearchQuery(e.target.value)}
+              className="w-full pl-14 pr-5 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm sm:text-base font-medium text-slate-700 shadow-sm placeholder:text-slate-400"
+            />
           </div>
           <div className="space-y-2">
             {recordsSearchedUsers.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search Results</p>
-                {recordsSearchedUsers.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => {
-                      setSelectedRecordUser(user);
-                      setIsAddingRecord(false);
-                      setSelectedRecordTile(null);
-                    }}
-                    className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between group ${
-                      selectedRecordUser?.id === user.id ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-slate-100 hover:border-primary/30'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all">
-                        <User size={20} />
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {recordsSearchedUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => {
+                        setSelectedRecordUser(user);
+                        setIsAddingRecord(false);
+                        setSelectedRecordTile(null);
+                        setRecordDefaultNotes('');
+                        setRecordNotes('');
+                        setRecordTitle('');
+                        setHardcopyVerified(false);
+                      }}
+                      className={`w-full p-4 rounded-xl border text-left transition-all flex items-center justify-between group ${
+                        selectedRecordUser?.id === user.id ? 'border-primary bg-white ring-2 ring-primary/15 shadow-sm' : 'border-slate-200 bg-white/90 hover:border-primary/30 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                          <User size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-black text-slate-800 text-sm truncate">{user.name}</p>
+                          <p className="text-xs text-slate-500 font-medium truncate">{user.email}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-black text-slate-800 text-sm">{user.name}</p>
-                        <p className="text-xs text-slate-500 font-medium">{user.email}</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={18} className="text-slate-300 group-hover:text-primary transition-all" />
-                  </button>
-                ))}
+                      <ChevronRight size={18} className="text-slate-300 group-hover:text-primary transition-all shrink-0" />
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : recordsSearchQuery.trim() !== '' ? (
-              <div className="text-center py-6 text-slate-400 font-bold text-sm">No patients found.</div>
+              <div className="text-center py-4 text-slate-400 font-bold text-sm">No patients found.</div>
             ) : (
-              <div className="text-center py-6 text-slate-400 font-bold text-sm">Start typing to search for a patient.</div>
+              <div className="text-center py-4 text-slate-400 font-bold text-sm">Start typing to search for a patient.</div>
             )}
           </div>
         </div>
+
+        {selectedRecordUser && (
+          <div className="bg-white p-4 sm:p-5 rounded-[1.5rem] border border-slate-200 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <UserCircle2 size={24} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.22em]">Selected Patient</p>
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 truncate">{selectedRecordUser.name}</h2>
+                  <p className="text-sm text-slate-500 font-medium truncate">{selectedRecordUser.email || 'No email available'}</p>
+                  {(selectedRecordUser.studentNumber || selectedRecordUser.employeeNumber) && (
+                    <p className="text-xs text-slate-400 font-semibold mt-1">
+                      {selectedRecordUser.studentNumber || selectedRecordUser.employeeNumber}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {!selectedRecordTile && !isAddingRecord && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingRecord(true);
+                    setRecordTitle(queueContext?.appointment ? buildQueueDraft(queueContext).title : 'Medical Record');
+                    setRecordDefaultNotes(queueContext?.appointment ? buildQueueDraft(queueContext).defaultNotes : '');
+                    setRecordNotes('');
+                    setRecordFiles([]);
+                    setHardcopyVerified(false);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-sm font-black shadow-lg shadow-primary/20 hover:bg-primary-hover transition-all"
+                >
+                  <Plus size={16} />
+                  New Record
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {selectedRecordUser ? (
@@ -235,13 +393,21 @@ export const AdminRecordsPage = () => {
                     Record Results
                   </h3>
                   <button
-                    onClick={() => setSelectedRecordUser(null)}
+                    onClick={() => {
+                      setSelectedRecordUser(null);
+                      setSelectedRecordTile(null);
+                      setIsAddingRecord(false);
+                      setRecordTitle('');
+                      setRecordNotes('');
+                      setRecordDefaultNotes('');
+                      setRecordFiles([]);
+                    }}
                     className="text-xs font-black text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
                   >
                     Close
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   <motion.button
                     whileHover={{ y: -4 }}
                     onClick={() => {
@@ -249,8 +415,9 @@ export const AdminRecordsPage = () => {
                       setRecordTitle('');
                       setRecordNotes('');
                       setRecordFiles([]);
+                      setHardcopyVerified(false);
                     }}
-                    className="p-5 bg-primary/5 border-2 border-dashed border-primary/20 rounded-xl flex flex-col items-center justify-center space-y-3 group hover:bg-primary/10 hover:border-primary transition-all"
+                    className="p-5 bg-gradient-to-br from-primary/5 to-emerald-50 border-2 border-dashed border-primary/20 rounded-2xl flex flex-col items-center justify-center space-y-3 group hover:bg-primary/10 hover:border-primary transition-all"
                   >
                     <div className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
                       <Plus size={24} />
@@ -265,10 +432,13 @@ export const AdminRecordsPage = () => {
                         key={record.id}
                         whileHover={{ y: -4 }}
                         onClick={() => setSelectedRecordTile(record)}
-                        className="p-5 bg-slate-50 border border-slate-100 rounded-xl flex flex-col items-start space-y-2 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 hover:border-primary/20 transition-all text-left"
+                        className="p-5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-start space-y-2 group hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 hover:border-primary/20 transition-all text-left"
                       >
                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 group-hover:text-primary transition-all shadow-sm overflow-hidden">
-                          {(record.attachmentPath || record.attachments?.[0]?.attachmentPath) ? (
+                          {(record.attachmentPath || record.attachments?.[0]?.attachmentPath) && isImageAttachment({
+                            attachmentPath: record.attachmentPath || record.attachments?.[0]?.attachmentPath,
+                            attachmentMime: record.attachmentMime || record.attachments?.[0]?.attachmentMime,
+                          }) ? (
                             <img
                               src={`${baseURL}/uploads/${record.attachmentPath || record.attachments?.[0]?.attachmentPath}`}
                               alt=""
@@ -293,7 +463,7 @@ export const AdminRecordsPage = () => {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-5"
+                className="bg-white p-5 sm:p-6 rounded-[1.75rem] border border-slate-200 shadow-sm space-y-5"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
@@ -335,25 +505,40 @@ export const AdminRecordsPage = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {selectedRecordAttachments.map((att, i) => {
                           const attachmentUrl = `${baseURL}/uploads/${att.attachmentPath}`;
+                          const isImage = isImageAttachment(att);
                           return (
                             <div
                               key={att.id || `${att.attachmentPath}-${i}`}
                               className="relative aspect-square w-full rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 group"
                             >
-                              <button
-                                type="button"
-                                onClick={() => setPreviewImageUrl(attachmentUrl)}
-                                className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
-                              >
-                                <img
-                                  src={attachmentUrl}
-                                  alt="Record attachment"
-                                  className="w-full h-full object-cover"
-                                />
-                              </button>
+                              {isImage ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewImageUrl(attachmentUrl)}
+                                  className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
+                                >
+                                  <img
+                                    src={attachmentUrl}
+                                    alt="Record attachment"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </button>
+                              ) : (
+                                <a
+                                  href={attachmentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center"
+                                >
+                                  <FileText size={28} className="text-slate-400" />
+                                  <span className="text-[11px] font-bold text-slate-600 break-all">
+                                    {att.originalName || att.attachmentPath?.split('/').pop() || 'Attachment'}
+                                  </span>
+                                </a>
+                              )}
                               <a
                                 href={attachmentUrl}
-                                download={`record-attachment-${att.id || selectedRecordTile.id || 'image'}.jpg`}
+                                download={att.originalName || `record-attachment-${att.id || selectedRecordTile.id || 'file'}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
@@ -376,7 +561,7 @@ export const AdminRecordsPage = () => {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-5"
+                className="bg-white p-5 sm:p-6 rounded-[1.75rem] border border-slate-200 shadow-sm space-y-5"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
@@ -392,45 +577,67 @@ export const AdminRecordsPage = () => {
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-primary shadow-sm">
-                      <UserCircle2 size={28} />
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-primary shadow-sm">
+                      <UserCircle2 size={22} />
                     </div>
                     <div>
-                      <p className="text-base font-black text-slate-800">{selectedRecordUser.name}</p>
+                      <p className="text-sm font-black text-slate-800">{selectedRecordUser.name}</p>
                       <p className="text-xs text-slate-500 font-medium">{selectedRecordUser.email}</p>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-5">
+                {queueContext?.queueId && selectedRecordUser?.id === queueContext.user?.id && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-1">
+                    <p className="text-[10px] font-black text-primary uppercase tracking-[0.18em]">Serving Queue Context</p>
+                    <p className="text-sm font-black text-slate-800">
+                      {queueContext.appointment?.service || 'Consultation'}
+                      {queueContext.appointment?.subcategory ? ` - ${queueContext.appointment.subcategory}` : ''}
+                    </p>
+                    <p className="text-xs text-slate-600 font-medium">
+                      {queueContext.queueNumber ? `Queue ${queueContext.queueNumber}` : 'Active queue patient'}
+                      {queueContext.appointment?.code ? ` • ${queueContext.appointment.code}` : ''}
+                    </p>
+                    {queueContext.appointment?.purpose && (
+                      <p className="text-xs text-slate-600 font-medium">
+                        Requested purpose: {queueContext.appointment.purpose}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Record title</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Initial Consultation, Lab Results..."
-                      value={recordTitle}
-                      onChange={(e) => setRecordTitle(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium"
-                    />
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Record Type</label>
+                    <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-800">
+                      {recordTitle || 'Medical Record'}
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Notes & observations</label>
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Request Details</label>
+                    <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 whitespace-pre-wrap">
+                      {recordDefaultNotes || 'No default request details available.'}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Remarks / Findings</label>
                     <textarea
-                      rows={4}
-                      placeholder="Add detailed clinical notes..."
+                      rows={5}
+                      placeholder="Add your findings, remarks, reading, or result summary for this patient..."
                       value={recordNotes}
                       onChange={(e) => setRecordNotes(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium resize-none"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium resize-none"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Attachments (images)</label>
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
+                      {isCertificationFlow ? 'Requirement Files (required)' : 'Attachments (x-ray, scans, documents)'}
+                    </label>
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-slate-100 rounded-xl p-5 flex flex-col items-center justify-center space-y-2 cursor-pointer hover:bg-slate-50 transition-all group"
+                      className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 cursor-pointer hover:bg-slate-50 transition-all group"
                     >
                       <FileUp size={20} className="text-slate-300 group-hover:text-primary transition-colors" />
-                      <p className="text-xs font-black text-slate-400 uppercase">Upload images</p>
-                      <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*" className="hidden" />
+                      <p className="text-xs font-black text-slate-400 uppercase">Upload files</p>
+                      <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" />
                     </div>
                     {recordFiles.length > 0 && (
                       <div className="space-y-2">
@@ -445,17 +652,30 @@ export const AdminRecordsPage = () => {
                       </div>
                     )}
                   </div>
+                  {isCertificationFlow && (
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50">
+                      <input
+                        type="checkbox"
+                        checked={hardcopyVerified}
+                        onChange={(e) => setHardcopyVerified(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-xs font-semibold text-emerald-800">
+                        I verified the uploaded requirement files against the patient&apos;s hardcopy documents.
+                      </span>
+                    </label>
+                  )}
                   <button
                     onClick={handleSaveRecord}
-                    disabled={isSaving || (!recordTitle.trim() && !recordNotes.trim())}
-                    className="w-full py-3.5 bg-primary text-white font-black rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={isSaving || !recordNotes.trim()}
+                    className="w-full py-3 bg-primary text-white font-black rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isSaving ? (
                       <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
                       <>
                         <Save size={14} />
-                        Save medical record
+                        {isCertificationFlow ? 'Issue completed medical certificate' : 'Save medical record'}
                       </>
                     )}
                   </button>
@@ -463,7 +683,7 @@ export const AdminRecordsPage = () => {
               </motion.div>
             )
           ) : (
-            <div className="bg-slate-100/50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-8 text-center space-y-3">
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100/70 border-2 border-dashed border-slate-200 rounded-[1.75rem] flex flex-col items-center justify-center p-12 text-center space-y-3">
               <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-slate-200 shadow-sm">
                 <FolderOpen size={28} />
               </div>
