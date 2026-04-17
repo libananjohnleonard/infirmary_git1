@@ -183,7 +183,10 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   const navigate = useNavigate();
   const [date, setDate] = useState(startOfToday());
   const [formData, setFormData] = useState(() => initialFormData(user));
-  const [requirementFiles, setRequirementFiles] = useState([]);
+  const [requirementFileGroups, setRequirementFileGroups] = useState({
+    chestXray: [],
+    urinalysis: [],
+  });
   const submitLockRef = useRef(false);
 
   useEffect(() => {
@@ -194,6 +197,11 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
   const availablePurposes = formData.service ? (commonPurposesByService[formData.service] || []) : [];
   const isMedicalService = formData.service === 'Medical';
+  const requirementFiles = Object.values(requirementFileGroups).flat();
+  const requirementUploadItems = [
+    ...requirementFileGroups.chestXray.map((file) => ({ file, label: 'Chest Xray' })),
+    ...requirementFileGroups.urinalysis.map((file) => ({ file, label: 'Urinalyses' })),
+  ];
   const hasNotCompletedAppointment = (appointments || []).some((apt) => apt.status === 'Not Completed');
 
   useEffect(() => {
@@ -218,8 +226,18 @@ export const BookingForm = ({ onBook, appointments, user }) => {
     setLastBooked(null);
     setDate(startOfToday());
     setFormData(initialFormData(user));
-    setRequirementFiles([]);
+    setRequirementFileGroups({
+      chestXray: [],
+      urinalysis: [],
+    });
     navigate('/app/appointments');
+  };
+
+  const handleRequirementGroupChange = (groupKey, files) => {
+    setRequirementFileGroups((prev) => ({
+      ...prev,
+      [groupKey]: Array.from(files || []),
+    }));
   };
 
   // Fetch all slot availabilities for the selected date from API (single request)
@@ -326,10 +344,11 @@ export const BookingForm = ({ onBook, appointments, user }) => {
         patientName: user?.name || formData.patientName,
         date: format(date, 'yyyy-MM-dd'),
         time: formData.timeSlot,
+        requirementFiles: requirementUploadItems,
         notes: [
           formData.notes?.trim() || '',
-          isMedicalService && requirementFiles.length > 0
-            ? `Submitted requirement files: ${requirementFiles.map((file) => file.name).join(', ')}`
+          isMedicalService && requirementUploadItems.length > 0
+            ? `Submitted requirement files: ${requirementUploadItems.map((item) => `${item.label}: ${item.file.name}`).join(', ')}`
             : '',
         ]
           .filter(Boolean)
@@ -467,7 +486,10 @@ export const BookingForm = ({ onBook, appointments, user }) => {
                     onClick={() => {
                       setFormData({ ...formData, service: s.id, subcategory: FIXED_SUBCATEGORY, purpose: '' });
                       if (s.id !== 'Medical') {
-                        setRequirementFiles([]);
+                        setRequirementFileGroups({
+                          chestXray: [],
+                          urinalysis: [],
+                        });
                       }
                     }}
                     className={`p-4 rounded-2xl border text-left transition-all ${formData.service === s.id
@@ -532,17 +554,48 @@ export const BookingForm = ({ onBook, appointments, user }) => {
                 <label className="text-sm font-bold text-slate-700 uppercase tracking-wider">
                   Medical Requirements Upload
                 </label>
-                <input
-                  type="file"
-                  multiple
-                  required={isMedicalService}
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={(e) => setRequirementFiles(Array.from(e.target.files || []))}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
-                />
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Chest Xray: <span className="font-medium text-slate-500">Choose File/s</span>
+                    </label>
+                    <input
+                      type="file"
+                      multiple
+                      required={isMedicalService && requirementFiles.length === 0}
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => handleRequirementGroupChange('chestXray', e.target.files)}
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
+                    />
+                    <p className="text-xs text-slate-500">
+                      {requirementFileGroups.chestXray.length > 0
+                        ? `Selected: ${requirementFileGroups.chestXray.map((file) => file.name).join(', ')}`
+                        : 'Choose file/s'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">
+                      Urinalyses: <span className="font-medium text-slate-500">Choose File/s</span>
+                    </label>
+                    <input
+                      type="file"
+                      multiple
+                      required={isMedicalService && requirementFiles.length === 0}
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => handleRequirementGroupChange('urinalysis', e.target.files)}
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white text-sm text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-primary file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
+                    />
+                    <p className="text-xs text-slate-500">
+                      {requirementFileGroups.urinalysis.length > 0
+                        ? `Selected: ${requirementFileGroups.urinalysis.map((file) => file.name).join(', ')}`
+                        : 'Choose file/s'}
+                    </p>
+                  </div>
+                </div>
                 {requirementFiles.length > 0 && (
                   <p className="text-xs text-slate-500">
-                    Uploaded: {requirementFiles.map((file) => file.name).join(', ')}
+                    Uploaded files: {requirementFiles.map((file) => file.name).join(', ')}
                   </p>
                 )}
                 <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold">

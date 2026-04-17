@@ -74,7 +74,7 @@ const matchesQueueDateScope = (queue, scope, specificDate) => {
 export const AdminQueuePage = () => {
   const navigate = useNavigate();
   const [queues, setQueues] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('Waiting');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [dateScope, setDateScope] = useState('today');
   const [specificDate, setSpecificDate] = useState('');
   const [loading, setLoading] = useState(true);

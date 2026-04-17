@@ -272,6 +272,8 @@ export const AppProvider = ({ children }) => {
       date: newApt.date,
       time: newApt.time,
       notes: newApt.notes,
+      requirementFiles: Array.isArray(newApt.requirementFiles) ? newApt.requirementFiles : [],
+      attachmentFiles: Array.isArray(newApt.attachmentFiles) ? newApt.attachmentFiles : [],
     };
     const appointment = reschedulable
       ? await appointmentService.reschedule(reschedulable.id, payload)

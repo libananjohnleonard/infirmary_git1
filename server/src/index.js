@@ -489,6 +489,105 @@ async function saveDataUrlAttachment({ dataUrl, mimeType, originalName }) {
   };
 }
 
+async function ensureAppointmentAttachmentsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.appointment_attachments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      appointment_id uuid NOT NULL REFERENCES public.appointments(id) ON DELETE CASCADE,
+      attachment_path text NOT NULL,
+      attachment_mime text NOT NULL,
+      requirement_label text,
+      original_name text,
+      created_at timestamp with time zone NOT NULL DEFAULT now()
+    )
+  `);
+
+  await pool.query(`
+    ALTER TABLE public.appointment_attachments
+    ADD COLUMN IF NOT EXISTS requirement_label text
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_appointment_attachments_appointment_id
+    ON public.appointment_attachments(appointment_id)
+  `);
+}
+
+async function ensureMedicalRecordAttachmentLabels() {
+  await pool.query(`
+    ALTER TABLE public.medical_record_attachments
+    ADD COLUMN IF NOT EXISTS requirement_label text
+  `);
+}
+
+async function getAppointmentAttachments(appointmentId, client = pool) {
+  if (!appointmentId) return [];
+
+  const { rows } = await client.query(
+    `
+      SELECT id, appointment_id, attachment_path, attachment_mime, requirement_label, original_name, created_at
+      FROM public.appointment_attachments
+      WHERE appointment_id = $1
+      ORDER BY created_at ASC
+    `,
+    [appointmentId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    appointmentId: row.appointment_id,
+    attachmentPath: row.attachment_path,
+    attachmentMime: row.attachment_mime,
+    requirementLabel: row.requirement_label || null,
+    originalName: row.original_name || null,
+    createdAt: row.created_at,
+  }));
+}
+
+async function replaceAppointmentAttachments(client, appointmentId, attachments = []) {
+  if (!appointmentId) return [];
+
+  await client.query(
+    `
+      DELETE FROM public.appointment_attachments
+      WHERE appointment_id = $1
+    `,
+    [appointmentId],
+  );
+
+  const savedAttachments = [];
+  for (const attachment of attachments) {
+    if (!attachment?.dataUrl) continue;
+    const requirementLabel = String(attachment.label || '').trim() || null;
+    const saved = await saveDataUrlAttachment({
+      dataUrl: attachment.dataUrl,
+      mimeType: attachment.type,
+      originalName: attachment.name,
+    });
+
+    await client.query(
+      `
+        INSERT INTO public.appointment_attachments (
+          appointment_id,
+          attachment_path,
+          attachment_mime,
+          requirement_label,
+          original_name
+        )
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [appointmentId, saved.attachmentPath, saved.attachmentMime, requirementLabel, saved.originalName],
+    );
+
+    savedAttachments.push({
+      ...saved,
+      requirementLabel,
+    });
+  }
+
+  return savedAttachments;
+}
+
 async function generateQueueNumberForDate(date) {
   const { rows } = await pool.query(
     `
@@ -2132,6 +2231,7 @@ app.post('/api/appointments', loadAuthenticatedUser, async (req, res) => {
   const date = normalizeIdentifier(req.body?.date);
   const timeSlot = formatTimeSlotLabel(normalizeIdentifier(req.body?.time));
   const notes = normalizeIdentifier(req.body?.notes);
+  const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
 
   if (!patientName || !service || !subcategory || !purpose || !date || !timeSlot) {
     return res.status(400).json({ message: 'Missing required appointment fields.' });
@@ -2165,48 +2265,66 @@ app.post('/api/appointments', loadAuthenticatedUser, async (req, res) => {
     }
 
     const appointmentCode = await generateAppointmentCode();
-    const inserted = await pool.query(
-      `
-        INSERT INTO public.appointments (
-          user_id,
-          appointment_code,
-          patient_name,
+    const client = await pool.connect();
+    let insertedRow;
+    try {
+      await client.query('BEGIN');
+
+      const inserted = await client.query(
+        `
+          INSERT INTO public.appointments (
+            user_id,
+            appointment_code,
+            patient_name,
+            service,
+            subcategory,
+            purpose,
+            appointment_date,
+            time_slot,
+            notes,
+            status,
+            slot_definition_id
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11)
+          RETURNING *
+        `,
+        [
+          req.authUser.id,
+          appointmentCode,
+          patientName,
           service,
           subcategory,
           purpose,
-          appointment_date,
-          time_slot,
+          date,
+          timeSlot,
           notes,
-          status,
-          slot_definition_id
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11)
-        RETURNING *
-      `,
-      [
-        req.authUser.id,
-        appointmentCode,
-        patientName,
-        service,
-        subcategory,
-        purpose,
-        date,
-        timeSlot,
-        notes,
-        initialStatus,
-        slotDefinition?.id || null,
-      ],
-    );
+          initialStatus,
+          slotDefinition?.id || null,
+        ],
+      );
+
+      insertedRow = inserted.rows[0];
+      if (attachments.length > 0) {
+        await replaceAppointmentAttachments(client, insertedRow.id, attachments);
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     await createNotification({
       userId: req.authUser.id,
       type: 'appointment_booked',
       title: 'Appointment booked',
       message: `${service} appointment scheduled for ${date} at ${timeSlot}.`,
-      appointmentId: inserted.rows[0].id,
+      appointmentId: insertedRow.id,
     });
 
-    return res.status(201).json(mapAppointmentRow(inserted.rows[0]));
+    return res.status(201).json(mapAppointmentRow(insertedRow));
   } catch (error) {
     return res.status(500).json({ message: 'Failed to book appointment.', error: error.message });
   }
@@ -2221,6 +2339,7 @@ app.patch('/api/appointments/:id/reschedule', loadAuthenticatedUser, async (req,
   const date = normalizeIdentifier(req.body?.date);
   const timeSlot = formatTimeSlotLabel(normalizeIdentifier(req.body?.time));
   const notes = normalizeIdentifier(req.body?.notes);
+  const attachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
 
   if (!id || !patientName || !service || !subcategory || !purpose || !date || !timeSlot) {
     return res.status(400).json({ message: 'Missing required appointment fields for reschedule.' });
@@ -2273,28 +2392,61 @@ app.patch('/api/appointments/:id/reschedule', loadAuthenticatedUser, async (req,
     }
 
     const resetStatus = await getInitialAppointmentStatus();
-    const updated = await pool.query(
-      `
-        UPDATE public.appointments
-        SET patient_name = $2,
-            service = $3,
-            subcategory = $4,
-            purpose = $5,
-            appointment_date = $6,
-            time_slot = $7,
-            notes = NULLIF($8, ''),
-            status = $9,
-            slot_definition_id = $10
-        WHERE id = $1
-          AND user_id = $11
-        RETURNING *
-      `,
-      [id, patientName, service, subcategory, purpose, date, timeSlot, notes, resetStatus, slotDefinition?.id || null, req.authUser.id],
-    );
+    const client = await pool.connect();
+    let updatedRow;
+    try {
+      await client.query('BEGIN');
 
-    return res.json(mapAppointmentRow(updated.rows[0]));
+      const updated = await client.query(
+        `
+          UPDATE public.appointments
+          SET patient_name = $2,
+              service = $3,
+              subcategory = $4,
+              purpose = $5,
+              appointment_date = $6,
+              time_slot = $7,
+              notes = NULLIF($8, ''),
+              status = $9,
+              slot_definition_id = $10
+          WHERE id = $1
+            AND user_id = $11
+          RETURNING *
+        `,
+        [id, patientName, service, subcategory, purpose, date, timeSlot, notes, resetStatus, slotDefinition?.id || null, req.authUser.id],
+      );
+
+      updatedRow = updated.rows[0];
+      if (attachments.length > 0) {
+        await replaceAppointmentAttachments(client, id, attachments);
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.json(mapAppointmentRow(updatedRow));
   } catch (error) {
     return res.status(500).json({ message: 'Failed to reschedule appointment.', error: error.message });
+  }
+});
+
+app.get('/api/appointments/:id/attachments', loadAuthenticatedUser, async (req, res) => {
+  const id = normalizeIdentifier(req.params?.id);
+
+  if (!id) {
+    return res.status(400).json({ message: 'Appointment id is required.' });
+  }
+
+  try {
+    const attachments = await getAppointmentAttachments(id);
+    return res.json({ attachments });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to load appointment attachments.', error: error.message });
   }
 });
 
@@ -2482,6 +2634,7 @@ app.get('/api/medical-records/:userId/records', loadAuthenticatedUser, async (re
           mra.id AS attachment_id,
           mra.attachment_path AS attachment_item_path,
           mra.attachment_mime AS attachment_item_mime,
+          mra.requirement_label AS attachment_item_requirement_label,
           mra.original_name AS attachment_item_name,
           mra.created_at AS attachment_item_created_at
         FROM public.medical_records mr
@@ -2517,6 +2670,7 @@ app.get('/api/medical-records/:userId/records', loadAuthenticatedUser, async (re
           id: row.attachment_id,
           attachmentPath: row.attachment_item_path,
           attachmentMime: row.attachment_item_mime,
+          requirementLabel: row.attachment_item_requirement_label || null,
           originalName: row.attachment_item_name || null,
           createdAt: row.attachment_item_created_at || null,
         });
@@ -2546,12 +2700,17 @@ app.post('/api/medical-records/:userId/records', loadAuthenticatedUser, async (r
     normalizedRecordLabel.includes('certification') ||
     normalizedRecordLabel.includes('certificate');
 
+  const appointmentAttachmentSource =
+    appointmentId
+      ? await getAppointmentAttachments(appointmentId).catch(() => [])
+      : [];
+
   if (!userId || !title) {
     return res.status(400).json({ message: 'User id and title are required.' });
   }
-  if (isCertificationRecord && attachments.length === 0) {
+  if (isCertificationRecord && attachments.length === 0 && appointmentAttachmentSource.length === 0) {
     return res.status(400).json({
-      message: 'At least one uploaded requirement file is required before issuing a medical certificate.',
+      message: 'At least one uploaded requirement file from the user appointment is required before issuing a medical certificate.',
     });
   }
   if (isCertificationRecord && !isHardcopyVerified) {
@@ -2565,14 +2724,25 @@ app.post('/api/medical-records/:userId/records', loadAuthenticatedUser, async (r
     await client.query('BEGIN');
 
     const savedAttachments = [];
-    for (const attachment of attachments) {
-      if (!attachment?.dataUrl) continue;
-      const saved = await saveDataUrlAttachment({
-        dataUrl: attachment.dataUrl,
-        mimeType: attachment.type,
-        originalName: attachment.name,
-      });
-      savedAttachments.push(saved);
+    if (attachments.length > 0) {
+      for (const attachment of attachments) {
+        if (!attachment?.dataUrl) continue;
+        const saved = await saveDataUrlAttachment({
+          dataUrl: attachment.dataUrl,
+          mimeType: attachment.type,
+          originalName: attachment.name,
+        });
+        savedAttachments.push(saved);
+      }
+    } else if (appointmentAttachmentSource.length > 0) {
+      savedAttachments.push(
+        ...appointmentAttachmentSource.map((attachment) => ({
+          attachmentPath: attachment.attachmentPath,
+          attachmentMime: attachment.attachmentMime,
+          requirementLabel: attachment.requirementLabel || null,
+          originalName: attachment.originalName,
+        })),
+      );
     }
 
     const primaryAttachment = savedAttachments[0] || null;
@@ -2627,11 +2797,12 @@ app.post('/api/medical-records/:userId/records', loadAuthenticatedUser, async (r
             record_id,
             attachment_path,
             attachment_mime,
+            requirement_label,
             original_name
           )
-          VALUES ($1, $2, $3, $4)
+          VALUES ($1, $2, $3, $4, $5)
         `,
-        [rows[0].id, attachment.attachmentPath, attachment.attachmentMime, attachment.originalName],
+        [rows[0].id, attachment.attachmentPath, attachment.attachmentMime, attachment.requirementLabel || null, attachment.originalName],
       );
     }
 
@@ -3085,6 +3256,8 @@ app.get('/api/health', async (_req, res) => {
 
 async function runStartupMaintenance() {
   try {
+    await ensureAppointmentAttachmentsTable();
+    await ensureMedicalRecordAttachmentLabels();
     await backfillMissingQueues();
     await markMissedAppointmentsAsNotCompleted();
   } catch (error) {

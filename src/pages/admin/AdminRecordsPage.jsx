@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { medicalRecordService } from '../../services/medicalRecordService';
+import { appointmentService } from '../../services/appointmentService';
 import { baseURL } from '../../services/api';
 
 const toastStyle = {
@@ -40,6 +41,14 @@ function buildQueueDraft(queueContext) {
   const purpose = queueContext?.appointment?.purpose;
   const appointmentCode = queueContext?.appointment?.code;
   const queueNumber = queueContext?.queueNumber;
+  const appointmentDate = queueContext?.appointment?.date;
+  const appointmentTime = queueContext?.appointment?.time;
+  const appointmentNotes = queueContext?.appointment?.notes;
+  const cleanedAppointmentNotes = String(appointmentNotes || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !/^Submitted requirement files:/i.test(line))
+    .join('\n');
   const serviceLabel = subcategory ? `${service} - ${subcategory}` : service;
   const isCertification = String(subcategory || '').toLowerCase() === 'certification';
 
@@ -52,6 +61,9 @@ function buildQueueDraft(queueContext) {
       `Service: ${serviceLabel}`,
       purpose ? `Requested Purpose: ${purpose}` : null,
       appointmentCode ? `Appointment Code: ${appointmentCode}` : null,
+      appointmentDate ? `Appointment Date: ${formatRecordDate(appointmentDate)}` : null,
+      appointmentTime ? `Appointment Time: ${appointmentTime}` : null,
+      cleanedAppointmentNotes ? `Patient Notes: ${cleanedAppointmentNotes}` : null,
     ]
       .filter(Boolean)
       .join('\n'),
@@ -64,17 +76,22 @@ function isImageAttachment(attachment) {
   return mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path);
 }
 
+function getAttachmentLabel(attachment) {
+  return attachment?.requirementLabel || 'Uploaded file';
+}
+
 export const AdminRecordsPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const storedQueueContext = (() => {
+  const initialQueueContext = (() => {
     try {
       const raw = sessionStorage.getItem('adminActiveRecordContext');
-      return raw ? JSON.parse(raw) : null;
+      return location.state?.queueContext || (raw ? JSON.parse(raw) : null);
     } catch {
-      return null;
+      return location.state?.queueContext || null;
     }
   })();
+  const [queueContext, setQueueContext] = useState(initialQueueContext);
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(false);
   const [recordsSearchQuery, setRecordsSearchQuery] = useState('');
@@ -88,11 +105,21 @@ export const AdminRecordsPage = () => {
   const [recordDefaultNotes, setRecordDefaultNotes] = useState('');
   const [recordFiles, setRecordFiles] = useState([]);
   const [hardcopyVerified, setHardcopyVerified] = useState(false);
+  const [appointmentAttachments, setAppointmentAttachments] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const fileInputRef = useRef(null);
   const consumedQueueContextRef = useRef(null);
-  const queueContext = location.state?.queueContext || storedQueueContext || null;
+  useEffect(() => {
+    const nextQueueContext = location.state?.queueContext;
+    if (!nextQueueContext?.queueId) return;
+    setQueueContext(nextQueueContext);
+    try {
+      sessionStorage.setItem('adminActiveRecordContext', JSON.stringify(nextQueueContext));
+    } catch {
+      // ignore storage errors
+    }
+  }, [location.state]);
 
   useEffect(() => {
     const loadPatients = async () => {
@@ -167,15 +194,42 @@ export const AdminRecordsPage = () => {
     setRecordFiles([]);
     setHardcopyVerified(false);
     consumedQueueContextRef.current = queueContext.queueId;
-    sessionStorage.removeItem('adminActiveRecordContext');
-    navigate(location.pathname, { replace: true, state: {} });
-  }, [location.pathname, navigate, patients, queueContext]);
+  }, [patients, queueContext]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAppointmentAttachments = async () => {
+      if (!queueContext?.appointment?.id) {
+        setAppointmentAttachments([]);
+        return;
+      }
+
+      try {
+        const attachments = await appointmentService.getAttachments(queueContext.appointment.id);
+        if (!cancelled) {
+          setAppointmentAttachments(Array.isArray(attachments) ? attachments : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setAppointmentAttachments([]);
+        }
+      }
+    };
+
+    loadAppointmentAttachments();
+    return () => {
+      cancelled = true;
+    };
+  }, [queueContext, selectedRecordUser]);
 
   const userRecords = apiRecords;
   const isViewingRecord = selectedRecordTile && !isAddingRecord;
+  const hasAppointmentAttachmentContext = Boolean(queueContext?.appointment?.id);
   const isCertificationFlow =
-    selectedRecordUser?.id === queueContext?.user?.id &&
+    hasAppointmentAttachmentContext &&
     String(queueContext?.appointment?.subcategory || '').toLowerCase() === 'certification';
+  const appointmentAttachmentItems = appointmentAttachments || [];
   const selectedRecordAttachments =
     selectedRecordTile?.attachments?.length > 0
       ? selectedRecordTile.attachments
@@ -199,14 +253,82 @@ export const AdminRecordsPage = () => {
     setRecordFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const renderAppointmentRequirementFiles = () => {
+    if (!hasAppointmentAttachmentContext) return null;
+
+    if (appointmentAttachmentItems.length === 0) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-800">
+          No requirement file has been uploaded by the user for this appointment yet.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {appointmentAttachmentItems
+            .filter((file) => isImageAttachment(file))
+            .map((file, i) => (
+              <div
+                key={file.id || `${file.attachmentPath}-preview-${i}`}
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageUrl(`${baseURL}/uploads/${file.attachmentPath}`)}
+                  className="relative aspect-square w-full overflow-hidden bg-slate-50 transition-all hover:border-primary/30"
+                >
+                  <img
+                    src={`${baseURL}/uploads/${file.attachmentPath}`}
+                    alt={file.originalName || 'Requirement file'}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+                <div className="space-y-1 border-t border-slate-100 p-2.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-primary">
+                    {getAttachmentLabel(file)}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-600 break-all">
+                    {file.originalName || file.attachmentPath?.split('/').pop() || 'Requirement file'}
+                  </p>
+                </div>
+              </div>
+            ))}
+        </div>
+        <div className="space-y-2">
+          {appointmentAttachmentItems.map((file, i) => (
+            <a
+              key={file.id || `${file.attachmentPath}-${i}`}
+              href={`${baseURL}/uploads/${file.attachmentPath}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-2.5 transition-all hover:border-primary/30 hover:bg-white"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-primary">
+                  {getAttachmentLabel(file)}
+                </p>
+                <span className="block max-w-[220px] truncate text-xs font-bold text-slate-600">
+                  {file.originalName || file.attachmentPath?.split('/').pop() || 'Uploaded file'}
+                </span>
+              </div>
+              <Download size={14} className="text-slate-400" />
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const handleSaveRecord = async () => {
     if (!selectedRecordUser) return;
     if (!recordNotes.trim()) {
       toast.error('Please add remarks or findings before saving.', { style: toastStyle });
       return;
     }
-    if (isCertificationFlow && recordFiles.length === 0) {
-      toast.error('Please upload at least one requirement file before issuing the certificate.', { style: toastStyle });
+    if (isCertificationFlow && appointmentAttachmentItems.length === 0) {
+      toast.error('The patient has not uploaded any requirement file for this appointment yet.', { style: toastStyle });
       return;
     }
     if (isCertificationFlow && !hardcopyVerified) {
@@ -220,13 +342,13 @@ export const AdminRecordsPage = () => {
 
     setIsSaving(true);
     try {
-      const activeDraft = queueContext?.user?.id === selectedRecordUser.id ? buildQueueDraft(queueContext) : null;
+      const activeDraft = queueContext?.appointment?.id ? buildQueueDraft(queueContext) : null;
       await medicalRecordService.createRecord(selectedRecordUser.id, {
         title: recordTitle.trim(),
         notes: combinedNotes,
-        attachmentFiles: recordFiles,
-        queueId: queueContext?.user?.id === selectedRecordUser.id ? queueContext?.queueId : '',
-        appointmentId: queueContext?.user?.id === selectedRecordUser.id ? queueContext?.appointment?.id : '',
+        attachmentFiles: hasAppointmentAttachmentContext ? [] : recordFiles,
+        queueId: queueContext?.queueId || '',
+        appointmentId: queueContext?.appointment?.id || '',
         recordType: activeDraft?.recordType || recordTitle.trim(),
         purpose: activeDraft?.purpose || '',
         isHardcopyVerified: isCertificationFlow ? hardcopyVerified : false,
@@ -249,7 +371,6 @@ export const AdminRecordsPage = () => {
     setRecordDefaultNotes('');
     setRecordFiles([]);
     setHardcopyVerified(false);
-    sessionStorage.removeItem('adminActiveRecordContext');
   };
 
   const goBackToTiles = () => {
@@ -258,7 +379,6 @@ export const AdminRecordsPage = () => {
     setPreviewImageUrl(null);
     setRecordDefaultNotes('');
     setHardcopyVerified(false);
-    sessionStorage.removeItem('adminActiveRecordContext');
   };
 
   return (
@@ -509,33 +629,43 @@ export const AdminRecordsPage = () => {
                           return (
                             <div
                               key={att.id || `${att.attachmentPath}-${i}`}
-                              className="relative aspect-square w-full rounded-xl border-2 border-slate-100 overflow-hidden bg-slate-50 group"
+                              className="relative overflow-hidden rounded-xl border-2 border-slate-100 bg-slate-50 group"
                             >
-                              {isImage ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewImageUrl(attachmentUrl)}
-                                  className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
-                                >
-                                  <img
-                                    src={attachmentUrl}
-                                    alt="Record attachment"
-                                    className="w-full h-full object-cover"
-                                  />
-                                </button>
-                              ) : (
-                                <a
-                                  href={attachmentUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center"
-                                >
-                                  <FileText size={28} className="text-slate-400" />
-                                  <span className="text-[11px] font-bold text-slate-600 break-all">
-                                    {att.originalName || att.attachmentPath?.split('/').pop() || 'Attachment'}
-                                  </span>
-                                </a>
-                              )}
+                              <div className="relative aspect-square w-full">
+                                {isImage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewImageUrl(attachmentUrl)}
+                                    className="absolute inset-0 w-full h-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset rounded-xl"
+                                  >
+                                    <img
+                                      src={attachmentUrl}
+                                      alt="Record attachment"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                ) : (
+                                  <a
+                                    href={attachmentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center"
+                                  >
+                                    <FileText size={28} className="text-slate-400" />
+                                    <span className="text-[11px] font-bold text-slate-600 break-all">
+                                      {att.originalName || att.attachmentPath?.split('/').pop() || 'Attachment'}
+                                    </span>
+                                  </a>
+                                )}
+                              </div>
+                              <div className="space-y-1 border-t border-slate-100 bg-white p-2.5">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-primary">
+                                  {getAttachmentLabel(att)}
+                                </p>
+                                <p className="text-xs font-semibold text-slate-600 break-all">
+                                  {att.originalName || att.attachmentPath?.split('/').pop() || 'Attachment'}
+                                </p>
+                              </div>
                               <a
                                 href={attachmentUrl}
                                 download={att.originalName || `record-attachment-${att.id || selectedRecordTile.id || 'file'}`}
@@ -617,6 +747,14 @@ export const AdminRecordsPage = () => {
                       {recordDefaultNotes || 'No default request details available.'}
                     </div>
                   </div>
+                  {hasAppointmentAttachmentContext && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
+                        Requirement Files (Clickable)
+                      </label>
+                      {renderAppointmentRequirementFiles()}
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Remarks / Findings</label>
                     <textarea
@@ -627,31 +765,33 @@ export const AdminRecordsPage = () => {
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium resize-none"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
-                      {isCertificationFlow ? 'Requirement Files (required)' : 'Attachments (x-ray, scans, documents)'}
-                    </label>
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 cursor-pointer hover:bg-slate-50 transition-all group"
-                    >
-                      <FileUp size={20} className="text-slate-300 group-hover:text-primary transition-colors" />
-                      <p className="text-xs font-black text-slate-400 uppercase">Upload files</p>
-                      <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" />
-                    </div>
-                    {recordFiles.length > 0 && (
-                      <div className="space-y-2">
-                        {recordFiles.map((file, i) => (
-                          <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
-                            <span className="text-xs font-bold text-slate-600 truncate max-w-[180px]">{file.name}</span>
-                            <button type="button" onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
+                  {!hasAppointmentAttachmentContext && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
+                        Attachments (X-ray, scans, documents)
+                      </label>
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center space-y-2 cursor-pointer hover:bg-slate-50 transition-all group"
+                      >
+                        <FileUp size={20} className="text-slate-300 group-hover:text-primary transition-colors" />
+                        <p className="text-xs font-black text-slate-400 uppercase">Upload files</p>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*,.pdf,.doc,.docx,.txt" className="hidden" />
                       </div>
-                    )}
-                  </div>
+                      {recordFiles.length > 0 && (
+                        <div className="space-y-2">
+                          {recordFiles.map((file, i) => (
+                            <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
+                              <span className="text-xs font-bold text-slate-600 truncate max-w-[180px]">{file.name}</span>
+                              <button type="button" onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {isCertificationFlow && (
                     <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50">
                       <input
