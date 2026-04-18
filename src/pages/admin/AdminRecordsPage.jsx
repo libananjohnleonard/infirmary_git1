@@ -20,6 +20,7 @@ import toast from 'react-hot-toast';
 import { medicalRecordService } from '../../services/medicalRecordService';
 import { appointmentService } from '../../services/appointmentService';
 import { baseURL } from '../../services/api';
+import { openMedicalCertificateWindow } from '../../utils/medicalCertificatePrint';
 
 const toastStyle = {
   borderRadius: '12px',
@@ -80,6 +81,21 @@ function getAttachmentLabel(attachment) {
   return attachment?.requirementLabel || 'Uploaded file';
 }
 
+function isCertificateRecord(record) {
+  const combined = `${record?.title || ''} ${record?.recordType || ''}`.toLowerCase();
+  return combined.includes('certificate') || combined.includes('certification');
+}
+
+function getStoredAdminName() {
+  try {
+    const raw = localStorage.getItem('authUser');
+    const user = raw ? JSON.parse(raw) : null;
+    return [user?.firstName, user?.middleName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Infirmary Admin';
+  } catch {
+    return 'Infirmary Admin';
+  }
+}
+
 export const AdminRecordsPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -101,6 +117,8 @@ export const AdminRecordsPage = () => {
   const [selectedRecordTile, setSelectedRecordTile] = useState(null);
   const [isAddingRecord, setIsAddingRecord] = useState(false);
   const [recordTitle, setRecordTitle] = useState('');
+  const [bpSystolic, setBpSystolic] = useState('');
+  const [bpDiastolic, setBpDiastolic] = useState('');
   const [recordNotes, setRecordNotes] = useState('');
   const [recordDefaultNotes, setRecordDefaultNotes] = useState('');
   const [recordFiles, setRecordFiles] = useState([]);
@@ -189,6 +207,8 @@ export const AdminRecordsPage = () => {
     setSelectedRecordTile(null);
     setIsAddingRecord(true);
     setRecordTitle(draft.title);
+    setBpSystolic('');
+    setBpDiastolic('');
     setRecordDefaultNotes(draft.defaultNotes);
     setRecordNotes('');
     setRecordFiles([]);
@@ -309,7 +329,7 @@ export const AdminRecordsPage = () => {
                 <p className="text-[10px] font-black uppercase tracking-widest text-primary">
                   {getAttachmentLabel(file)}
                 </p>
-                <span className="block max-w-[220px] truncate text-xs font-bold text-slate-600">
+                <span className="block max-w-55 truncate text-xs font-bold text-slate-600">
                   {file.originalName || file.attachmentPath?.split('/').pop() || 'Uploaded file'}
                 </span>
               </div>
@@ -322,28 +342,33 @@ export const AdminRecordsPage = () => {
   };
 
   const handleSaveRecord = async () => {
+    const wantsCertificateIssuance = isCertificationFlow;
     if (!selectedRecordUser) return;
     if (!recordNotes.trim()) {
       toast.error('Please add remarks or findings before saving.', { style: toastStyle });
       return;
     }
-    if (isCertificationFlow && appointmentAttachmentItems.length === 0) {
+    if (wantsCertificateIssuance && appointmentAttachmentItems.length === 0) {
       toast.error('The patient has not uploaded any requirement file for this appointment yet.', { style: toastStyle });
       return;
     }
-    if (isCertificationFlow && !hardcopyVerified) {
+    if (wantsCertificateIssuance && !hardcopyVerified) {
       toast.error('Please confirm hardcopy verification before completing this certification.', { style: toastStyle });
       return;
     }
 
-    const combinedNotes = [recordDefaultNotes, '', 'Remarks / Findings:', recordNotes.trim()]
-      .filter(Boolean)
-      .join('\n');
+    const noteSections = [recordDefaultNotes];
+    if (bpSystolic.trim() && bpDiastolic.trim()) {
+      noteSections.push(`Blood Pressure: ${bpSystolic.trim()}/${bpDiastolic.trim()} mmHg`);
+    }
+    noteSections.push('Remarks / Findings:');
+    noteSections.push(recordNotes.trim());
+    const combinedNotes = noteSections.filter(Boolean).join('\n\n');
 
     setIsSaving(true);
     try {
       const activeDraft = queueContext?.appointment?.id ? buildQueueDraft(queueContext) : null;
-      await medicalRecordService.createRecord(selectedRecordUser.id, {
+      const savedRecord = await medicalRecordService.createRecord(selectedRecordUser.id, {
         title: recordTitle.trim(),
         notes: combinedNotes,
         attachmentFiles: hasAppointmentAttachmentContext ? [] : recordFiles,
@@ -351,12 +376,18 @@ export const AdminRecordsPage = () => {
         appointmentId: queueContext?.appointment?.id || '',
         recordType: activeDraft?.recordType || recordTitle.trim(),
         purpose: activeDraft?.purpose || '',
-        isHardcopyVerified: isCertificationFlow ? hardcopyVerified : false,
-        certificateIssued: isCertificationFlow,
+        isHardcopyVerified: wantsCertificateIssuance ? hardcopyVerified : false,
+        certificateIssued: wantsCertificateIssuance,
       });
       toast.success('Medical record saved successfully!', { style: toastStyle });
       const data = await medicalRecordService.getRecordsByUserId(selectedRecordUser.id);
       setApiRecords(Array.isArray(data) ? data : []);
+      if (wantsCertificateIssuance) {
+        const didOpen = openCertificateForRecord({ record: savedRecord, findingsOverride: recordNotes.trim() });
+        if (!didOpen) {
+          toast.error('Certificate saved, but the browser blocked the print/download window.', { style: toastStyle });
+        }
+      }
     } catch (err) {
       const message =
         err?.response?.data?.message || 'Failed to save medical record.';
@@ -367,6 +398,8 @@ export const AdminRecordsPage = () => {
     setSelectedRecordTile(null);
     setIsAddingRecord(false);
     setRecordTitle('');
+    setBpSystolic('');
+    setBpDiastolic('');
     setRecordNotes('');
     setRecordDefaultNotes('');
     setRecordFiles([]);
@@ -377,8 +410,32 @@ export const AdminRecordsPage = () => {
     setSelectedRecordTile(null);
     setIsAddingRecord(false);
     setPreviewImageUrl(null);
+    setBpSystolic('');
+    setBpDiastolic('');
     setRecordDefaultNotes('');
     setHardcopyVerified(false);
+  };
+
+  const openCertificateForRecord = ({ record, findingsOverride = '' } = {}) => {
+    const activeDraft = buildQueueDraft(queueContext);
+    const findingsSource = findingsOverride || record?.notes || '';
+    const cleanedFindings = String(findingsSource || '')
+      .replace(recordDefaultNotes || '', '')
+      .replace(/^Remarks \/ Findings:\s*/i, '')
+      .trim();
+
+    return openMedicalCertificateWindow({
+      patientName: selectedRecordUser?.name || queueContext?.appointment?.patientName || 'Patient',
+      patientId: selectedRecordUser?.studentNumber || selectedRecordUser?.employeeNumber || '',
+      purpose: record?.purpose || activeDraft.purpose || queueContext?.appointment?.purpose || 'Medical certification',
+      service: record?.recordType || activeDraft.recordType || 'Medical',
+      appointmentDate: formatRecordDate(queueContext?.appointment?.date || record?.recordedAt),
+      appointmentTime: queueContext?.appointment?.time || '',
+      findings: cleanedFindings || 'No additional findings were provided.',
+      issuedAt: formatRecordDate(record?.recordedAt || new Date().toISOString()),
+      issuedBy: getStoredAdminName(),
+      certificateCode: record?.id || queueContext?.appointment?.code || '',
+    });
   };
 
   return (
@@ -389,7 +446,7 @@ export const AdminRecordsPage = () => {
       </div>
 
       <div className="space-y-6">
-        <div className="bg-gradient-to-br from-white via-slate-50 to-emerald-50/40 p-4 sm:p-5 rounded-[1.5rem] border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-linear-to-br from-white via-slate-50 to-emerald-50/40 p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="space-y-1.5">
               <p className="text-[10px] font-black text-primary uppercase tracking-[0.24em]">Record Workspace</p>
@@ -459,7 +516,7 @@ export const AdminRecordsPage = () => {
         </div>
 
         {selectedRecordUser && (
-          <div className="bg-white p-4 sm:p-5 rounded-[1.5rem] border border-slate-200 shadow-sm">
+          <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -482,6 +539,8 @@ export const AdminRecordsPage = () => {
                   onClick={() => {
                     setIsAddingRecord(true);
                     setRecordTitle(queueContext?.appointment ? buildQueueDraft(queueContext).title : 'Medical Record');
+                    setBpSystolic('');
+                    setBpDiastolic('');
                     setRecordDefaultNotes(queueContext?.appointment ? buildQueueDraft(queueContext).defaultNotes : '');
                     setRecordNotes('');
                     setRecordFiles([]);
@@ -518,6 +577,8 @@ export const AdminRecordsPage = () => {
                       setSelectedRecordTile(null);
                       setIsAddingRecord(false);
                       setRecordTitle('');
+                      setBpSystolic('');
+                      setBpDiastolic('');
                       setRecordNotes('');
                       setRecordDefaultNotes('');
                       setRecordFiles([]);
@@ -533,11 +594,13 @@ export const AdminRecordsPage = () => {
                     onClick={() => {
                       setIsAddingRecord(true);
                       setRecordTitle('');
+                      setBpSystolic('');
+                      setBpDiastolic('');
                       setRecordNotes('');
                       setRecordFiles([]);
                       setHardcopyVerified(false);
                     }}
-                    className="p-5 bg-gradient-to-br from-primary/5 to-emerald-50 border-2 border-dashed border-primary/20 rounded-2xl flex flex-col items-center justify-center space-y-3 group hover:bg-primary/10 hover:border-primary transition-all"
+                    className="p-5 bg-linear-to-br from-primary/5 to-emerald-50 border-2 border-dashed border-primary/20 rounded-2xl flex flex-col items-center justify-center space-y-3 group hover:bg-primary/10 hover:border-primary transition-all"
                   >
                     <div className="w-12 h-12 bg-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-primary/20">
                       <Plus size={24} />
@@ -590,12 +653,24 @@ export const AdminRecordsPage = () => {
                     <FileText size={20} className="text-primary" />
                     {selectedRecordTile.title}
                   </h3>
-                  <button
-                    onClick={goBackToTiles}
-                    className="text-xs font-black text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
-                  >
-                    Back to list
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isCertificateRecord(selectedRecordTile) && (
+                      <button
+                        type="button"
+                        onClick={() => openCertificateForRecord({ record: selectedRecordTile })}
+                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-primary-hover"
+                      >
+                        <Download size={14} />
+                        Print Certificate
+                      </button>
+                    )}
+                    <button
+                      onClick={goBackToTiles}
+                      className="text-xs font-black text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest"
+                    >
+                      Back to list
+                    </button>
+                  </div>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                   <div className="flex items-center gap-3">
@@ -615,7 +690,7 @@ export const AdminRecordsPage = () => {
                   </div>
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Notes & observations</p>
-                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-100 min-h-[80px]">
+                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-100 min-h-20">
                       {selectedRecordTile.notes ?? '—'}
                     </p>
                   </div>
@@ -756,6 +831,31 @@ export const AdminRecordsPage = () => {
                     </div>
                   )}
                   <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Blood Pressure</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3 items-center">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={bpSystolic}
+                        onChange={(e) => setBpSystolic(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
+                        placeholder="Systolic"
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium"
+                      />
+                      <div className="text-center text-lg font-black text-slate-400">/</div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={bpDiastolic}
+                        onChange={(e) => setBpDiastolic(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
+                        placeholder="Diastolic"
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-medium"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Optional. Example: `120 / 80 mmHg`
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">Remarks / Findings</label>
                     <textarea
                       rows={5}
@@ -782,7 +882,7 @@ export const AdminRecordsPage = () => {
                         <div className="space-y-2">
                           {recordFiles.map((file, i) => (
                             <div key={i} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
-                              <span className="text-xs font-bold text-slate-600 truncate max-w-[180px]">{file.name}</span>
+                              <span className="text-xs font-bold text-slate-600 truncate max-w-45">{file.name}</span>
                               <button type="button" onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
                                 <X size={14} />
                               </button>
@@ -805,31 +905,33 @@ export const AdminRecordsPage = () => {
                       </span>
                     </label>
                   )}
-                  <button
-                    onClick={handleSaveRecord}
-                    disabled={isSaving || !recordNotes.trim()}
-                    className="w-full py-3 bg-primary text-white font-black rounded-xl hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isSaving ? (
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Save size={14} />
-                        {isCertificationFlow ? 'Issue completed medical certificate' : 'Save medical record'}
-                      </>
-                    )}
-                  </button>
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      onClick={handleSaveRecord}
+                      disabled={isSaving || !recordNotes.trim()}
+                      className="w-full py-3 bg-slate-100 text-slate-800 font-black rounded-xl hover:bg-slate-200 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSaving ? (
+                        <div className="w-3.5 h-3.5 border-2 border-slate-400/30 border-t-slate-700 rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Save size={14} />
+                          Save medical record
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )
           ) : (
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100/70 border-2 border-dashed border-slate-200 rounded-[1.75rem] flex flex-col items-center justify-center p-12 text-center space-y-3">
+            <div className="bg-linear-to-br from-slate-50 to-slate-100/70 border-2 border-dashed border-slate-200 rounded-[1.75rem] flex flex-col items-center justify-center p-12 text-center space-y-3">
               <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-slate-200 shadow-sm">
                 <FolderOpen size={28} />
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-400">No patient selected</h3>
-                <p className="text-sm text-slate-400 font-medium max-w-[200px] mx-auto">Select a patient from the search results to manage their medical records.</p>
+                <p className="text-sm text-slate-400 font-medium max-w-50 mx-auto">Select a patient from the search results to manage their medical records.</p>
               </div>
             </div>
           )}
@@ -842,7 +944,7 @@ export const AdminRecordsPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4"
+            className="fixed inset-0 z-100 flex items-center justify-center bg-black/90 p-4"
             onClick={() => setPreviewImageUrl(null)}
           >
             <button

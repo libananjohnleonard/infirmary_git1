@@ -454,7 +454,7 @@ export const AdminQueuePage = () => {
                         {q.appointment?.time || (q.createdAt ? new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No time')}
                       </p>
                     </div>
-                    <div className="hidden lg:block border-l border-slate-200 pl-4 min-w-fit max-w-[260px]">
+                    <div className="hidden lg:block border-l border-slate-200 pl-4 min-w-fit max-w-65">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.18em]">Booked Details</p>
                       <p className="text-sm font-black text-slate-800">
                         {q.appointment?.service || 'No service'}

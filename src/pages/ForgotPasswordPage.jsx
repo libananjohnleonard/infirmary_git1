@@ -31,7 +31,7 @@ export const ForgotPasswordPage = () => {
 
   return (
     <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
-      <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-primary/20 via-slate-50 to-primary/10 -z-10" />
+      <div className="absolute top-0 left-0 w-full h-full bg-linear-to-br from-primary/20 via-slate-50 to-primary/10 -z-10" />
       <div className="absolute top-1/4 -left-20 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -z-10" />
       <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -z-10" />
 
@@ -41,7 +41,7 @@ export const ForgotPasswordPage = () => {
         className="bg-white/80 backdrop-blur-2xl p-8 rounded-[2.5rem] shadow-2xl border border-white w-full max-w-md space-y-8 relative"
       >
         <div className="text-center space-y-3">
-          <div className="bg-gradient-to-br from-primary to-primary-hover w-16 h-16 rounded-2xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl shadow-primary/30 transform -rotate-6">
+          <div className="bg-linear-to-br from-primary to-primary-hover w-16 h-16 rounded-2xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl shadow-primary/30 transform -rotate-6">
             <Mail size={32} />
           </div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter">Forgot password?</h2>
@@ -68,7 +68,7 @@ export const ForgotPasswordPage = () => {
         ) : (
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-black text-slate-600 uppercase tracking-[0.1em] ml-2">
+              <label className="text-[11px] font-black text-slate-600 uppercase tracking-widest ml-2">
                 Email address
               </label>
               <div className="relative group">

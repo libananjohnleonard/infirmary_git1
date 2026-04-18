@@ -178,6 +178,28 @@ function buildUserPayload(user) {
   };
 }
 
+async function generateGuestIdentifier() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const suffix = Math.floor(100000 + (Math.random() * 900000));
+    const identifier = `GST-${suffix}`;
+    const { rows } = await pool.query(
+      `
+        SELECT id
+        FROM public.users_auth
+        WHERE UPPER(COALESCE(id_number, '')) = UPPER($1)
+        LIMIT 1
+      `,
+      [identifier],
+    );
+
+    if (!rows[0]) {
+      return identifier;
+    }
+  }
+
+  return `GST-${Date.now().toString().slice(-6)}`;
+}
+
 function buildKioskUserPayload(user) {
   return {
     id: user.id,
@@ -1249,6 +1271,68 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/guest', async (_req, res) => {
+  try {
+    const guestIdentifier = await generateGuestIdentifier();
+    const { rows } = await pool.query(
+      `
+        INSERT INTO public.users_auth (
+          firstname,
+          lastname,
+          id_number,
+          qr_data,
+          role,
+          user_type,
+          status,
+          student_number,
+          employee_number
+        )
+        VALUES ('Guest', NULL, $1, $1, 'guest', 'guest', 'active', NULL, NULL)
+        RETURNING
+          id,
+          firstname,
+          middle_initial,
+          lastname,
+          email,
+          user_type,
+          picture_url,
+          student_number,
+          employee_number,
+          college,
+          program,
+          qr_code,
+          qr_data,
+          phone,
+          address,
+          id_number,
+          role,
+          status,
+          password_hash
+      `,
+      [guestIdentifier],
+    );
+
+    const guestUser = rows[0];
+    const tokenPayload = {
+      sub: guestUser.id,
+      studentId: guestIdentifier,
+      userType: 'guest',
+      ts: Date.now(),
+    };
+    const token = Buffer.from(JSON.stringify(tokenPayload)).toString('base64url');
+
+    return res.status(201).json({
+      token,
+      user: buildUserPayload(guestUser),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Failed to start guest session.',
+      error: error.message,
+    });
+  }
+});
+
 function isAdminUserType(userType) {
   return userType === 'admin' || userType === 'super_admin';
 }
@@ -1902,6 +1986,8 @@ app.patch('/api/auth/profile', loadAuthenticatedUser, async (req, res) => {
   const email = normalizeIdentifier(req.body?.email);
   const phone = normalizeIdentifier(req.body?.phone);
   const address = normalizeIdentifier(req.body?.address);
+  const college = normalizeIdentifier(req.body?.college);
+  const program = normalizeIdentifier(req.body?.program);
   const pictureUrl = typeof req.body?.pictureUrl === 'string' ? req.body.pictureUrl.trim() : '';
 
   try {
@@ -1914,7 +2000,9 @@ app.patch('/api/auth/profile', loadAuthenticatedUser, async (req, res) => {
             email = NULLIF($5, ''),
             phone = NULLIF($6, ''),
             address = NULLIF($7, ''),
-            picture_url = NULLIF($8, '')
+            picture_url = NULLIF($8, ''),
+            college = NULLIF($9, ''),
+            program = NULLIF($10, '')
         WHERE id = $1
         RETURNING
           id,
@@ -1946,6 +2034,8 @@ app.patch('/api/auth/profile', loadAuthenticatedUser, async (req, res) => {
         phone,
         address,
         pictureUrl,
+        college,
+        program,
       ],
     );
 

@@ -82,6 +82,7 @@ export const AppProvider = ({ children }) => {
         age: 0,
         allergies: []
       };
+  const isGuestUser = (authUser?.userType || authUser?.role) === 'guest';
 
   const setStoredAuthUser = useCallback((user) => {
     if (!user) {
@@ -410,6 +411,7 @@ export const AppProvider = ({ children }) => {
 
   const value = {
     userProfile,
+    isGuestUser,
     authUser,
     setStoredAuthUser,
     refreshAuthUser,

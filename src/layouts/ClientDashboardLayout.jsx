@@ -35,6 +35,7 @@ const getUserTypeLabel = (userType) => {
     new: 'New Student',
     old: 'Old Student',
     employee: 'Employee',
+    guest: 'Guest Access',
   };
   return map[userType] || (userType ? String(userType) : 'Patient');
 };
@@ -44,6 +45,7 @@ export const ClientDashboardLayout = () => {
   const location = useLocation();
   const {
     userProfile,
+    isGuestUser,
     logout,
     notifications,
     notificationsUnreadCount,
@@ -101,7 +103,14 @@ export const ClientDashboardLayout = () => {
     return <Navigate to="/login/user" replace />;
   }
 
+  if (isGuestUser && (location.pathname === '/app' || location.pathname === '/app/profile')) {
+    return <Navigate to="/app/book" replace />;
+  }
+
   const userTypeLabel = getUserTypeLabel(userProfile?.userType);
+  const visibleNavItems = isGuestUser
+    ? navItems.filter((item) => item.to === '/app/book' || item.to === '/app/appointments')
+    : navItems;
 
   return (
     <div className="min-h-screen bg-slate-50 flex overflow-x-hidden">
@@ -134,7 +143,7 @@ export const ClientDashboardLayout = () => {
         </div>
 
         <nav className="flex-1 p-3 sm:p-4 space-y-1 sm:space-y-2 mt-2 sm:mt-4 overflow-y-auto">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -263,14 +272,16 @@ export const ClientDashboardLayout = () => {
           
                     </div>
                     <div className="p-2">
-                      <NavLink
-                        to="/app/profile"
-                        onClick={() => setIsProfileOpen(false)}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:bg-slate-50 font-medium text-sm transition-colors"
-                      >
-                        <User size={18} className="text-slate-400 shrink-0" />
-                        My Profile
-                      </NavLink>
+                      {!isGuestUser && (
+                        <NavLink
+                          to="/app/profile"
+                          onClick={() => setIsProfileOpen(false)}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-700 hover:bg-slate-50 font-medium text-sm transition-colors"
+                        >
+                          <User size={18} className="text-slate-400 shrink-0" />
+                          My Profile
+                        </NavLink>
+                      )}
                       <button
                         type="button"
                         onClick={() => {

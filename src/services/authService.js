@@ -9,6 +9,10 @@ export const authService = {
     const { data } = await api.post('/api/auth/login', payload);
     return data;
   },
+  createGuestSession: async () => {
+    const { data } = await api.post('/api/auth/guest');
+    return data;
+  },
   forgotPassword: async (email) => {
     const { data } = await api.post('/api/auth/forgot-password', { email });
     return data;

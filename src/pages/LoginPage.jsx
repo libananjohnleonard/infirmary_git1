@@ -47,6 +47,7 @@ export const LoginPage = ({ variant = 'user' }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
 
   const copy = useMemo(() => pageCopy[variant] || pageCopy.user, [variant]);
   const Icon = copy.icon;
@@ -96,6 +97,34 @@ export const LoginPage = ({ variant = 'user' }) => {
       toast.error(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    try {
+      setGuestLoading(true);
+      const result = await authService.createGuestSession();
+
+      if (result?.token) {
+        localStorage.setItem('authToken', result.token);
+      }
+      if (result?.user) {
+        setStoredAuthUser(result.user);
+      }
+
+      addSystemLog({
+        type: 'client_login',
+        message: 'Guest signed in to client portal',
+        metadata: { userType: 'guest', idNumber: result?.user?.idNumber || 'temporary guest' },
+      });
+
+      toast.success('Guest access is ready. Please complete the booking form.');
+      navigate('/app/book');
+    } catch (err) {
+      const message = err.response?.data?.message || 'Failed to start a guest session.';
+      toast.error(message);
+    } finally {
+      setGuestLoading(false);
     }
   };
 
@@ -332,12 +361,31 @@ export const LoginPage = ({ variant = 'user' }) => {
           </div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || guestLoading}
             className="w-full py-3.5 sm:py-4 bg-primary text-white font-black rounded-xl sm:rounded-2xl hover:bg-primary-hover transition-all shadow-xl shadow-primary/30 text-base sm:text-lg mt-1 disabled:opacity-60 disabled:cursor-not-allowed min-h-[48px]"
           >
             {loading ? copy.loadingLabel : copy.submitLabel}
           </button>
         </form>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            Or
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <button
+            type="button"
+            onClick={handleGuestSignIn}
+            disabled={loading || guestLoading}
+            className="w-full py-3.5 sm:py-4 border border-slate-200 bg-slate-50 text-slate-800 font-black rounded-xl sm:rounded-2xl hover:border-primary/30 hover:bg-primary/5 transition-all text-sm sm:text-base disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {guestLoading ? 'Preparing guest access...' : 'Sign In as Guest'}
+          </button>
+          <p className="text-xs text-slate-500 text-center leading-relaxed">
+            Guest access is limited to medical appointment booking and appointment viewing with a temporary ID or QR code.
+          </p>
+        </div>
       </motion.div>
     </div>
   );

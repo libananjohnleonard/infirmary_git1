@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { AppointmentList } from '../components/AppointmentList';
 
 export const ClientAppointmentsPage = () => {
-  const { appointments } = useApp();
+  const { appointments, userProfile } = useApp();
 
   return (
     <motion.div
@@ -17,7 +17,7 @@ export const ClientAppointmentsPage = () => {
         <h2 className="text-xl sm:text-2xl font-bold text-slate-800">My Appointments</h2>
         <p className="text-slate-500 text-sm sm:text-base">Manage your scheduled visits and history.</p>
       </div>
-      <AppointmentList appointments={appointments} isClient={true} />
+      <AppointmentList appointments={appointments} isClient={true} user={userProfile} />
     </motion.div>
   );
 };

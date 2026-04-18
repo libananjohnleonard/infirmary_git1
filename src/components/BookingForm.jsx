@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ReactCalendar from 'react-calendar';
 import { appointmentService } from '../services/appointmentService';
+import { profileService } from '../services/profileService';
 import 'react-calendar/dist/Calendar.css';
 import { format, isBefore, startOfToday, getDay, addMonths, isAfter, isValid, parseISO, isSameDay } from 'date-fns';
 import { Clock, User, FileText, CheckCircle2, AlertCircle, Calendar as CalendarIcon, ClipboardList, Tag, X, Ticket, MapPin, CalendarDays, Building2, GraduationCap } from 'lucide-react';
@@ -31,6 +32,10 @@ const services = [
   { id: 'Nutrition', label: 'Nutrition', description: 'Dietary & wellness' }
 ];
 
+const guestServices = [
+  { id: 'Medical', label: 'Medical', description: 'Guest medical appointment booking' },
+];
+
 const FIXED_SUBCATEGORY = 'Consultation';
 
 const commonPurposesByService = {
@@ -39,9 +44,26 @@ const commonPurposesByService = {
   Nutrition: ['Dietary Counseling'],
 };
 
+const guestPurposesByService = {
+  Medical: ['Freshmen'],
+};
+
 const MAX_SLOTS = 50;
 const DEFAULT_TIME_SLOTS = ['8:00 AM - 11:00 AM', '1:00 PM - 4:00 PM', '4:00 PM - 7:00 PM', '7:00 PM - 11:00 PM'];
 const MEDICAL_REQUIREMENT_NOTICE = 'All submitted files are for initial review only. Please bring the original documents to the infirmary office, otherwise your request will not be processed and no medical certification will be issued.';
+
+const isInfirmaryClosedOnDate = (d) => {
+  const day = getDay(d);
+  return day === 0 || day === 5 || day === 6; // Sunday, Friday, and Saturday
+};
+
+const getNextOpenBookingDate = (baseDate = startOfToday()) => {
+  const nextDate = new Date(baseDate);
+  while (isInfirmaryClosedOnDate(nextDate)) {
+    nextDate.setDate(nextDate.getDate() + 1);
+  }
+  return nextDate;
+};
 
 const parseTimeSlotEndMinutes = (slotLabel) => {
   const match = String(slotLabel || '').match(/-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*$/i);
@@ -58,15 +80,127 @@ const parseTimeSlotEndMinutes = (slotLabel) => {
   return (hours * 60) + minutes;
 };
 
-const ConfirmationModal = ({ isOpen, appointment, onClose, user }) => {
+const ConfirmationModal = ({ isOpen, appointment, onClose, user, isGuestUser, guestCourse }) => {
   if (!appointment) return null;
   const showDepartment = Boolean(user?.college?.trim());
   const showProgram = Boolean(user?.program?.trim());
+  const tempIdentifier = user?.idNumber || user?.qrValue || null;
+  const guestQrCode = user?.qrCode || null;
+
+  const handleDownloadGuestPass = () => {
+    if (!tempIdentifier || !guestQrCode) return;
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Guest Check-In Pass</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 24px;
+              font-family: Arial, sans-serif;
+              background: #f8fafc;
+              color: #0f172a;
+            }
+            .card {
+              max-width: 420px;
+              margin: 0 auto;
+              background: #ffffff;
+              border: 1px solid #e2e8f0;
+              border-radius: 24px;
+              padding: 24px;
+              box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            }
+            .eyebrow {
+              font-size: 12px;
+              letter-spacing: 0.18em;
+              text-transform: uppercase;
+              color: #0f766e;
+              font-weight: 700;
+            }
+            h1 {
+              margin: 10px 0 16px;
+              font-size: 26px;
+              line-height: 1.1;
+            }
+            .meta {
+              margin: 12px 0;
+              padding: 14px 16px;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 16px;
+            }
+            .label {
+              font-size: 11px;
+              letter-spacing: 0.12em;
+              text-transform: uppercase;
+              color: #64748b;
+              font-weight: 700;
+              margin-bottom: 4px;
+            }
+            .value {
+              font-size: 20px;
+              font-weight: 800;
+              color: #020617;
+            }
+            .qr {
+              margin: 20px auto;
+              width: 220px;
+              height: 220px;
+              display: block;
+              object-fit: contain;
+              border: 1px solid #e2e8f0;
+              border-radius: 18px;
+              padding: 12px;
+              background: #ffffff;
+            }
+            .note {
+              margin-top: 16px;
+              font-size: 13px;
+              line-height: 1.5;
+              color: #475569;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="eyebrow">Guest Check-In Pass</div>
+            <h1>Temporary QR and ID</h1>
+            <div class="meta">
+              <div class="label">Temporary ID</div>
+              <div class="value">${tempIdentifier}</div>
+            </div>
+            <div class="meta">
+              <div class="label">Patient</div>
+              <div class="value" style="font-size: 18px;">${appointment.patientName || 'Guest'}</div>
+            </div>
+            <img class="qr" src="${guestQrCode}" alt="Guest temporary QR code" />
+            <p class="note">
+              Show this QR code or temporary ID at the kiosk during check-in.
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${tempIdentifier}-guest-pass.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -126,6 +260,40 @@ const ConfirmationModal = ({ isOpen, appointment, onClose, user }) => {
                 </div>
               </div>
 
+              {isGuestUser && (
+                <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Guest Check-In Pass</p>
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Temporary ID</p>
+                        <p className="text-xl font-black text-slate-900">{tempIdentifier || 'Not available'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Course</p>
+                        <p className="font-bold text-slate-800">{guestCourse || user?.program || 'Not provided'}</p>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Use this temporary ID or QR code at the kiosk when you check in for your appointment.
+                      </p>
+                    </div>
+                    {guestQrCode && (
+                      <div className="self-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <img src={guestQrCode} alt="Guest temporary QR code" className="h-32 w-32 rounded-xl object-contain" />
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadGuestPass}
+                    disabled={!tempIdentifier || !guestQrCode}
+                    className="mt-4 w-full rounded-2xl border border-primary/20 bg-white px-4 py-3 text-sm font-black text-primary transition-colors hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Download Guest QR and Temp ID
+                  </button>
+                </div>
+              )}
+
               {(showDepartment || showProgram) && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
                   {showDepartment && (
@@ -172,16 +340,17 @@ const ConfirmationModal = ({ isOpen, appointment, onClose, user }) => {
 
 const initialFormData = (user) => ({
   patientName: user?.name || '',
-  service: '',
+  course: user?.program || '',
+  service: user?.userType === 'guest' ? 'Medical' : '',
   subcategory: FIXED_SUBCATEGORY,
   purpose: '',
   timeSlot: '',
   notes: '',
 });
 
-export const BookingForm = ({ onBook, appointments, user }) => {
+export const BookingForm = ({ onBook, appointments, user, isGuestUser = false, onUserUpdated }) => {
   const navigate = useNavigate();
-  const [date, setDate] = useState(startOfToday());
+  const [date, setDate] = useState(() => getNextOpenBookingDate());
   const [formData, setFormData] = useState(() => initialFormData(user));
   const [requirementFileGroups, setRequirementFileGroups] = useState({
     chestXray: [],
@@ -190,14 +359,21 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   const submitLockRef = useRef(false);
 
   useEffect(() => {
-    if (user?.name) {
-      setFormData(prev => ({ ...prev, patientName: user.name }));
+    if (user?.name || user?.program || user?.userType === 'guest') {
+      setFormData(prev => ({
+        ...prev,
+        patientName: user?.userType === 'guest' ? prev.patientName : (user?.name || prev.patientName),
+        course: user?.program || prev.course,
+        service: user?.userType === 'guest' ? 'Medical' : prev.service,
+      }));
     }
   }, [user]);
 
-  const availablePurposes = formData.service ? (commonPurposesByService[formData.service] || []) : [];
+  const purposeOptions = isGuestUser ? guestPurposesByService : commonPurposesByService;
+  const serviceOptions = isGuestUser ? guestServices : services;
+  const availablePurposes = formData.service ? (purposeOptions[formData.service] || []) : [];
   const isMedicalService = formData.service === 'Medical';
-  const requirementFiles = Object.values(requirementFileGroups).flat();
+  const requirementFiles = [...requirementFileGroups.chestXray, ...requirementFileGroups.urinalysis];
   const requirementUploadItems = [
     ...requirementFileGroups.chestXray.map((file) => ({ file, label: 'Chest Xray' })),
     ...requirementFileGroups.urinalysis.map((file) => ({ file, label: 'Urinalyses' })),
@@ -224,7 +400,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   const handleConfirmationDone = () => {
     setShowConfirmation(false);
     setLastBooked(null);
-    setDate(startOfToday());
+    setDate(getNextOpenBookingDate());
     setFormData(initialFormData(user));
     setRequirementFileGroups({
       chestXray: [],
@@ -274,16 +450,9 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   }, [date]);
 
   const isDayDisabled = ({ date: calendarDate }) => {
-    const day = getDay(calendarDate);
-    const isWeekend = day === 0 || day === 6;
     const isPast = isBefore(calendarDate, startOfToday());
     const isTooFar = isAfter(calendarDate, addMonths(startOfToday(), 1));
-    return isWeekend || isPast || isTooFar;
-  };
-
-  const isInfirmaryClosedOnDate = (d) => {
-    const day = getDay(d);
-    return day === 0 || day === 6; // Sunday and Saturday
+    return isInfirmaryClosedOnDate(calendarDate) || isPast || isTooFar;
   };
 
   const isClosedDate = isInfirmaryClosedOnDate(date);
@@ -313,6 +482,14 @@ export const BookingForm = ({ onBook, appointments, user }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submitLockRef.current) return;
+    if (isGuestUser && !formData.patientName.trim()) {
+      toast.error('Please enter your full name.');
+      return;
+    }
+    if (isGuestUser && !formData.course.trim()) {
+      toast.error('Please enter your course.');
+      return;
+    }
     if (!formData.service) {
       toast.error('Please select a service.');
       return;
@@ -331,7 +508,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
     }
 
     if (isInfirmaryClosedOnDate(date)) {
-      toast.error('The infirmary is closed on this day. Please select a weekday (Monday–Friday).');
+      toast.error('The infirmary is closed on this day. Please select an open day from Monday to Thursday.');
       return;
     }
 
@@ -339,13 +516,35 @@ export const BookingForm = ({ onBook, appointments, user }) => {
     setIsSubmitting(true);
 
     try {
+      if (isGuestUser) {
+        const nameParts = formData.patientName.trim().split(/\s+/).filter(Boolean);
+        const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+        const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] || 'Guest';
+        const profileResult = await profileService.updateProfile({
+          firstName,
+          middleName: '',
+          lastName,
+          email: '',
+          phone: '',
+          address: '',
+          college: '',
+          program: formData.course.trim(),
+          pictureUrl: '',
+        });
+
+        if (profileResult?.user && typeof onUserUpdated === 'function') {
+          onUserUpdated(profileResult.user);
+        }
+      }
+
       const appointment = await onBook({
         ...formData,
-        patientName: user?.name || formData.patientName,
+        patientName: isGuestUser ? formData.patientName.trim() : (user?.name || formData.patientName),
         date: format(date, 'yyyy-MM-dd'),
         time: formData.timeSlot,
         requirementFiles: requirementUploadItems,
         notes: [
+          isGuestUser ? `Course: ${formData.course.trim()}` : '',
           formData.notes?.trim() || '',
           isMedicalService && requirementUploadItems.length > 0
             ? `Submitted requirement files: ${requirementUploadItems.map((item) => `${item.label}: ${item.file.name}`).join(', ')}`
@@ -374,6 +573,8 @@ export const BookingForm = ({ onBook, appointments, user }) => {
         appointment={lastBooked}
         onClose={handleConfirmationDone}
         user={user}
+        isGuestUser={isGuestUser}
+        guestCourse={formData.course}
       />
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 px-0">
@@ -399,7 +600,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
               {isClosedDate ? (
                 <div className="mt-4 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-xl border border-amber-100">
                   <AlertCircle size={14} />
-                  Infirmary is closed on weekends.
+                  Infirmary is closed on Friday and weekends.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
@@ -454,7 +655,11 @@ export const BookingForm = ({ onBook, appointments, user }) => {
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 overflow-hidden min-w-0">
           <div className="bg-primary p-5 sm:p-6 md:p-8 text-white">
             <h2 className="text-xl sm:text-2xl font-bold">2. Patient Details</h2>
-            <p className="text-white/80 text-xs sm:text-sm mt-1">Tell us more about your visit on {safeFormat(date, 'MMM d')}.</p>
+            <p className="text-white/80 text-xs sm:text-sm mt-1">
+              {isGuestUser
+                ? `Guest booking is limited to Medical service. Complete your details for ${safeFormat(date, 'MMM d')}.`
+                : `Tell us more about your visit on ${safeFormat(date, 'MMM d')}.`}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-8">
@@ -466,12 +671,43 @@ export const BookingForm = ({ onBook, appointments, user }) => {
             <div className="space-y-3">
               <label className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-wider">
                 <User size={16} className="text-primary" />
-                Patient Name
+                {isGuestUser ? 'Full Name' : 'Patient Name'}
               </label>
-              <div className="w-full px-5 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-lg font-medium text-slate-800">
-                {user?.name || formData.patientName || '—'}
-              </div>
+              {isGuestUser ? (
+                <input
+                  type="text"
+                  required
+                  className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all bg-white text-lg font-medium text-slate-800"
+                  placeholder="Enter your full name"
+                  value={formData.patientName}
+                  onChange={(e) => setFormData({ ...formData, patientName: e.target.value })}
+                />
+              ) : (
+                <div className="w-full px-5 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-lg font-medium text-slate-800">
+                  {user?.name || formData.patientName || '—'}
+                </div>
+              )}
             </div>
+
+            {isGuestUser && (
+              <>
+                <div className="space-y-3">
+                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-wider">
+                    <GraduationCap size={16} className="text-primary" />
+                    Course
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    className="w-full px-5 py-4 rounded-2xl border border-slate-200 focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all bg-white font-medium"
+                    placeholder="Enter your course"
+                    value={formData.course}
+                    onChange={(e) => setFormData({ ...formData, course: e.target.value })}
+                  />
+                </div>
+
+              </>
+            )}
 
             <div className="space-y-4">
               <label className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-wider">
@@ -479,7 +715,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
                 Select Service
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {services.map((s) => (
+                {serviceOptions.map((s) => (
                   <button
                     key={s.id}
                     type="button"
@@ -557,7 +793,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-slate-700">
-                      Chest Xray: <span className="font-medium text-slate-500">Choose File/s</span>
+                      Chest Xray:
                     </label>
                     <input
                       type="file"
@@ -576,7 +812,7 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
                   <div className="space-y-2">
                     <label className="block text-sm font-semibold text-slate-700">
-                      Urinalyses: <span className="font-medium text-slate-500">Choose File/s</span>
+                      Urinalyses:
                     </label>
                     <input
                       type="file"
@@ -606,7 +842,14 @@ export const BookingForm = ({ onBook, appointments, user }) => {
 
             <button
               type="submit"
-              disabled={isSubmitting || !formData.service || !formData.purpose || !formData.timeSlot || (isMedicalService && requirementFiles.length === 0)}
+              disabled={
+                isSubmitting ||
+                !formData.service ||
+                !formData.purpose ||
+                !formData.timeSlot ||
+                (isMedicalService && requirementFiles.length === 0) ||
+                (isGuestUser && (!formData.patientName.trim() || !formData.course.trim()))
+              }
               className={`w-full py-4 sm:py-5 rounded-xl sm:rounded-2xl font-black text-base sm:text-lg text-white transition-all flex items-center justify-center gap-3 shadow-xl ${isSubmitting ? 'bg-emerald-500' : 'bg-primary hover:bg-primary-hover shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed'
                 }`}
             >

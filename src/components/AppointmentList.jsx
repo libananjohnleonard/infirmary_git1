@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Clock, User, Stethoscope, Apple, Activity, Trash2, RefreshCw, XCircle, PlayCircle, CheckCircle, X, Ticket, MapPin, ClipboardList, Tag, FileText } from 'lucide-react';
+import { Calendar, Clock, User, Stethoscope, Apple, Activity, Trash2, RefreshCw, XCircle, PlayCircle, CheckCircle, X, Ticket, MapPin, ClipboardList, Tag, FileText, IdCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isValid, parseISO } from 'date-fns';
 
@@ -54,8 +54,10 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const AppointmentDetailModal = ({ isOpen, appointment, onClose }) => {
+const AppointmentDetailModal = ({ isOpen, appointment, onClose, user }) => {
   if (!appointment) return null;
+  const isGuestUser = user?.userType === 'guest';
+  const tempIdentifier = user?.idNumber || user?.qrValue || null;
 
   return (
     <AnimatePresence>
@@ -163,6 +165,32 @@ const AppointmentDetailModal = ({ isOpen, appointment, onClose }) => {
                   </div>
                 </div>
 
+                {isGuestUser && (
+                  <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-white rounded-lg text-primary shadow-sm">
+                            <IdCard size={18} />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase">Temporary ID</p>
+                            <p className="font-black text-slate-900">{tempIdentifier || 'Not available'}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Present this temporary ID or QR code when checking in at the kiosk.
+                        </p>
+                      </div>
+                      {user?.qrCode && (
+                        <div className="justify-self-center rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                          <img src={user.qrCode} alt="Temporary guest QR code" className="h-28 w-28 rounded-xl object-contain" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {appointment.notes && (
                   <div className="flex items-start gap-4">
                     <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
@@ -197,7 +225,7 @@ const AppointmentDetailModal = ({ isOpen, appointment, onClose }) => {
   );
 };
 
-export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClient = false }) => {
+export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClient = false, user = null }) => {
   const [selectedApt, setSelectedApt] = useState(null);
 
   if (appointments.length === 0) {
@@ -215,6 +243,7 @@ export const AppointmentList = ({ appointments, onCancel, onUpdateStatus, isClie
       <AppointmentDetailModal 
         isOpen={!!selectedApt} 
         appointment={selectedApt} 
+        user={user}
         onClose={() => setSelectedApt(null)} 
       />
 

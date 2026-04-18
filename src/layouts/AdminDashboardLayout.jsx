@@ -10,7 +10,6 @@ const navItemsBase = [
   { to: '/admin', end: true, label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/appointments', end: false, label: 'Appointments', icon: CalendarDays },
   { to: '/admin/queues', end: false, label: 'Queues', icon: ListOrdered },
-  { to: '/admin/consultation', end: false, label: 'Consultation Logs', icon: ClipboardList },
   { to: '/admin/records', end: false, label: 'Medical Records', icon: FolderOpen },
 ];
 const navItemAccounts = { to: '/admin/accounts', end: false, label: 'Accounts', icon: Users };

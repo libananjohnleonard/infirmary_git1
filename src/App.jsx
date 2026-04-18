@@ -15,7 +15,6 @@ import { ClientAppointmentsPage } from './pages/ClientAppointmentsPage';
 import { ClientProfilePage } from './pages/ClientProfilePage';
 import { AdminOverviewPage } from './pages/admin/AdminOverviewPage';
 import { AdminAppointmentsPage } from './pages/admin/AdminAppointmentsPage';
-import { AdminConsultationPage } from './pages/admin/AdminConsultationPage';
 import { AdminRecordsPage } from './pages/admin/AdminRecordsPage';
 import { AdminSystemLogsPage } from './pages/admin/AdminSystemLogsPage';
 import { AdminQueuePage } from './pages/admin/AdminQueuePage';
@@ -57,7 +56,6 @@ export default function App() {
           <Route index element={<AdminOverviewPage />} />
           <Route path="appointments" element={<AdminAppointmentsPage />} />
           <Route path="queues" element={<AdminQueuePage />} />
-          <Route path="consultation" element={<AdminConsultationPage />} />
           <Route path="records" element={<AdminRecordsPage />} />
           <Route path="accounts" element={<AdminAccountsPage />} />
           <Route path="user-control" element={<AdminUserControlPage />} />

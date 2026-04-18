@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   CalendarDays,
@@ -14,7 +14,11 @@ import { useApp } from '../context/AppContext';
 import { AppointmentList } from '../components/AppointmentList';
 
 export const ClientDashboardPage = () => {
-  const { userProfile, appointments } = useApp();
+  const { userProfile, appointments, isGuestUser } = useApp();
+
+  if (isGuestUser) {
+    return <Navigate to="/app/book" replace />;
+  }
 
   const stats = [
     { label: 'Total Visits', value: appointments.length, icon: CalendarDays, color: 'text-slate-800', bg: 'bg-slate-50' },
